@@ -15,9 +15,14 @@ type MinIOChecker interface {
 	Check(ctx context.Context) error
 }
 
+type RabbitMQChecker interface {
+	Check(ctx context.Context) error
+}
+
 type HealthService struct {
 	postgres PostgresChecker
 	minio    MinIOChecker
+	rabbitmq RabbitMQChecker
 }
 
 type HealthResponse struct {
@@ -26,10 +31,11 @@ type HealthResponse struct {
 	Timestamp string            `json:"timestamp"`
 }
 
-func NewHealthService(postgres PostgresChecker, minio MinIOChecker) *HealthService {
+func NewHealthService(postgres PostgresChecker, minio MinIOChecker, rabbitmq RabbitMQChecker) *HealthService {
 	return &HealthService{
 		postgres: postgres,
 		minio:    minio,
+		rabbitmq: rabbitmq,
 	}
 }
 
@@ -42,6 +48,7 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 		Services: map[string]string{
 			"postgres": "ok",
 			"minio":    "ok",
+			"rabbitmq": "ok",
 		},
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
@@ -54,6 +61,11 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	if err := h.healthService.minio.Check(ctx); err != nil {
 		resp.Status = "degraded"
 		resp.Services["minio"] = "error"
+	}
+
+	if err := h.healthService.rabbitmq.Check(ctx); err != nil {
+		resp.Status = "degraded"
+		resp.Services["rabbitmq"] = "error"
 	}
 
 	w.Header().Set("Content-Type", "application/json")

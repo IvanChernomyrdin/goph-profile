@@ -1,9 +1,3 @@
-// Package http реализует маршрутизацию HTTP-слоя сервера GophKeeper.
-//
-// Пакет отвечает за:
-//   - регистрацию HTTP-маршрутов и настройку роутера (chi);
-//   - логирование выполнения HTTP-запросов;
-//   - выполняет проверку JWT access-токенов;
 package http
 
 import (
@@ -13,23 +7,45 @@ import (
 	"goph-profile-avatars/internal/middleware"
 
 	"github.com/go-chi/chi/v5"
-	httpSwagger "github.com/swaggo/http-swagger"
 )
 
-// NewRouter создаёт и настраивает HTTP-роутер сервера.
-//
-// Роутер использует chi.Router и регистрирует:
-//   - публичные эндпоинты аутентификации под префиксом /auth;
-//   - middleware логирования для всех запросов;
-//   - группу защищённых JWT эндпоинтов (пока без маршрутов secrets).
 func NewRouter(h *api.Handler) http.Handler {
 	r := chi.NewRouter()
 	// логирование всех запросов
 	r.Use(middleware.LoggerMiddleware())
-	// добавляем swagger
-	r.Get("/swagger/*", httpSwagger.WrapHandler)
-	// проверка ответа от postgres и minIO
+
+	// Проверка работоспособности
 	r.Get("/health", h.Health)
+
+	// API v1
+	r.Route("/api/v1", func(r chi.Router) {
+		// Загрузка аватарки
+		r.Post("/avatars", h.UploadAvatar)
+		// Получение аватарки
+		r.Get("/avatars/{avatar_id}", h.GetAvatar)
+		r.Get("/users/{user_id}/avatar", h.GetUserAvatar)
+		// Удаление аватарки
+		r.Delete("/avatars/{avatar_id}", h.DeleteAvatar)
+		r.Delete("/users/{user_id}/avatar", h.DeleteUserAvatar)
+		// Получение метаданных аватарки
+		r.Get("/avatars/{avatar_id}/metadata", h.GetAvatarMetadata)
+		// Список аватарок пользователя
+		r.Get("/users/{user_id}/avatars", h.GetUserAvatars)
+	})
+
+	// Веб-интерфейс
+	r.Route("/web", func(r chi.Router) {
+		// форма загрузки
+		r.Get("/upload", h.WebUploadPage)
+		// обработка загрузки
+		r.Post("/upload", h.WebUploadAvatar)
+		// галерея аватарок
+		r.Get("/gallery/{user_id}", h.WebGallery)
+	})
+
+	// статика для фронта
+	fileServer := http.FileServer(http.Dir("./web/static"))
+	r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
 
 	return r
 }

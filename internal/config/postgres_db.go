@@ -107,7 +107,7 @@ func PostgresInit(databaseDSN string) error {
 
 	// создаём миграции с выбранным драйвером
 	m, err := migrate.NewWithDatabaseInstance(
-		"file:///"+absPath,
+		"file://"+absPath,
 		"postgres", driver)
 	if err != nil {
 		customLog.Errorf("error creating migrations: %v", err)

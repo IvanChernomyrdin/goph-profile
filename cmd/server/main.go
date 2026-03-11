@@ -30,10 +30,22 @@ func main() {
 	if err := config.MinIOAWSInit(cfg.S3); err != nil {
 		sugar.Fatal(err)
 	}
+
+	// подключаем rabbitMQ
+	if err := config.RabbitMQInit(cfg.RabbitMQ); err != nil {
+		sugar.Fatal(err)
+	}
+	defer func() {
+		if err := config.CloseRabbitMQ(); err != nil {
+			sugar.Errorf("rabbitmq close error: %v", err)
+		}
+	}()
+
 	// запускаем сервис
 	healthService := apis.NewHealthService(
 		config.GetDB(),
 		services.NewMinIOHealthService(config.GetMinIOClient()),
+		services.NewRabbitMQHealthService(config.GetRabbitConn()),
 	)
 	// запускаем chi роутер
 	handler := apis.NewHandler(healthService)
