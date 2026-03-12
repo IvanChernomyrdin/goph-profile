@@ -33,14 +33,19 @@ func NewRouter(h *api.Handler) http.Handler {
 		r.Get("/users/{user_id}/avatars", h.GetUserAvatars)
 	})
 
-	// Веб-интерфейс
-	r.Route("/web", func(r chi.Router) {
-		// форма загрузки
-		r.Get("/upload", h.WebUploadPage)
-		// обработка загрузки
-		r.Post("/upload", h.WebUploadAvatar)
-		// галерея аватарок
-		r.Get("/gallery/{user_id}", h.WebGallery)
+	// // Веб-интерфейс
+	// r.Route("/web", func(r chi.Router) {
+	// 	// форма загрузки
+	// 	r.Get("/", h.WebUploadPage)
+	// 	// обработка загрузки
+	// 	r.Post("/upload", h.WebUploadAvatar)
+	// 	// галерея аватарок
+	// 	r.Get("/gallery/{user_id}", h.WebGallery)
+	// })
+
+	// web
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./web/static/index.html")
 	})
 
 	// статика для фронта

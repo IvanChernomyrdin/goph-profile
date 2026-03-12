@@ -7,6 +7,7 @@ import (
 	"goph-profile-avatars/internal/config"
 	logger "goph-profile-avatars/internal/logging"
 	routerhttp "goph-profile-avatars/internal/net/http"
+	"goph-profile-avatars/internal/repository"
 	"goph-profile-avatars/internal/services"
 )
 
@@ -47,8 +48,27 @@ func main() {
 		services.NewMinIOHealthService(config.GetMinIOClient()),
 		services.NewRabbitMQHealthService(config.GetRabbitConn()),
 	)
+
+	avatarRepo := repository.NewAvatarRepository(config.GetDB())
+	storage := services.NewMinIOStorage(config.GetMinIOClient(), cfg.S3.Bucket)
+	publisher := services.NewRabbitPublisher(
+		config.GetRabbitChannel(),
+		cfg.RabbitMQ.Exchange,
+		cfg.RabbitMQ.UploadRoutingKey,
+	)
+
 	// запускаем chi роутер
-	handler := apis.NewHandler(healthService)
+	avatarService := services.NewAvatarService(
+		avatarRepo,
+		storage,
+		publisher,
+	)
+
+	handler := apis.NewHandler(
+		healthService,
+		avatarService,
+	)
+
 	router := routerhttp.NewRouter(handler)
 	// формирует строку подключения >> хост:порт
 	addr := cfg.App.Host + ":" + cfg.App.Port

@@ -1,11 +1,20 @@
 package api
 
-type Handler struct {
-	healthService *HealthService
+type AvatarService interface {
+	UploadAvatar(input UploadAvatarInput) (*UploadAvatarResult, error)
 }
 
-func NewHandler(healthService *HealthService) *Handler {
+type Handler struct {
+	healthService *HealthService
+	avatarService AvatarService
+}
+
+func NewHandler(
+	healthService *HealthService,
+	avatarService AvatarService,
+) *Handler {
 	return &Handler{
 		healthService: healthService,
+		avatarService: avatarService,
 	}
 }

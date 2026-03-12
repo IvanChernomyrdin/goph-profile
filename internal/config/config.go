@@ -10,7 +10,7 @@ type Config struct {
 	App      AppConfig      `yaml:"app"`
 	Postgres PostgresConfig `yaml:"postgres"`
 	S3       S3Config       `yaml:"s3"`
-	RabbitMQ RabbitMQConfig `yaml:""rabbitmq`
+	RabbitMQ RabbitMQConfig `yaml:"rabbitmq"`
 }
 
 type AppConfig struct {

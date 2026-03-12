@@ -2,9 +2,9 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Avatar Upload</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GophProfile Avatar Upload</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script>
     tailwind.config = {
@@ -19,102 +19,237 @@
   </script>
 </head>
 
-<body class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-  <div class="container mx-auto px-4 py-8 max-w-2xl">
+<body class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+  <div class="container mx-auto px-4 py-8 max-w-5xl">
     <div class="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
       <header class="bg-gradient-to-r from-purple-600 to-blue-600 p-6">
-        <h1 class="text-3xl font-bold text-white text-center">Avatar Upload Service</h1>
-        <p class="text-white/80 text-center mt-2">Upload your avatar image</p>
+        <h1 class="text-3xl font-bold text-center">GophProfile</h1>
+        <p class="text-white/80 text-center mt-2">Upload, preview and view your avatars</p>
       </header>
 
-      <main class="p-6 space-y-6">
-        <form id="uploadForm" class="space-y-4">
+      <main class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Левая колонка: загрузка -->
+        <section class="space-y-6">
           <div>
-            <label for="userId" class="block text-sm font-medium text-white mb-2">
-              User ID <span class="text-red-400">*</span>
-            </label>
-            <input type="text" id="userId" name="userId" required placeholder="Enter your user ID"
-              class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all">
+            <h2 class="text-2xl font-semibold mb-4">Upload avatar</h2>
+
+            <form id="uploadForm" class="space-y-4">
+              <div>
+                <label for="userId" class="block text-sm font-medium mb-2">
+                  User ID <span class="text-red-400">*</span>
+                </label>
+                <input type="text" id="userId" name="userId" required placeholder="Enter your user ID"
+                  class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium mb-2">
+                  Choose image <span class="text-red-400">*</span>
+                </label>
+
+                <div id="dropZone"
+                  class="border-2 border-dashed border-white/30 rounded-xl p-6 text-center bg-white/5 hover:bg-white/10 transition cursor-pointer">
+                  <input type="file" id="image" name="image" accept="image/*" required class="hidden" />
+                  <div class="space-y-2">
+                    <p class="text-lg font-medium">Drag & drop image here</p>
+                    <p class="text-white/60 text-sm">or click to choose a file</p>
+                    <button type="button" id="selectFileBtn"
+                      class="inline-flex items-center px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 transition">
+                      Select file
+                    </button>
+                  </div>
+                </div>
+
+                <p id="selectedFileName" class="mt-3 text-sm text-white/70 hidden"></p>
+              </div>
+
+              <div id="imagePreview" class="hidden">
+                <p class="text-sm font-medium mb-2">Preview</p>
+                <img id="previewImg" src="" alt="Preview"
+                  class="w-40 h-40 object-cover rounded-xl shadow-lg border border-white/20" />
+              </div>
+
+              <button type="submit" id="submitBtn"
+                class="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                Upload avatar
+              </button>
+            </form>
           </div>
 
-          <div>
-            <label for="image" class="block text-sm font-medium text-white mb-2">
-              Choose Image <span class="text-red-400">*</span>
-            </label>
-            <div class="relative">
-              <input type="file" id="image" name="image" accept="image/*" required
-                class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all">
-            </div>
-            <div id="imagePreview" class="mt-4 hidden">
-              <img id="previewImg" src="" alt="Preview" class="w-32 h-32 object-cover rounded-lg shadow-lg mx-auto">
-            </div>
-          </div>
-
-          <button type="submit" id="submitBtn"
-            class="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-transparent transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]">
-            <span id="btnText">Upload Avatar</span>
-            <span id="btnLoader" class="hidden">
-              <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg"
-                fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                </path>
-              </svg>
-              Uploading...
-            </span>
-          </button>
-        </form>
-
-        <div id="responseContainer" class="hidden">
-          <div class="border-t border-white/20 pt-6">
-            <h2 class="text-xl font-semibold text-white mb-4">API Response</h2>
-            <div id="responseContent" class="space-y-4">
-              <div id="responseStatus" class="px-4 py-3 rounded-lg font-mono text-sm"></div>
-              <div id="responseBody" class="bg-black/30 rounded-lg p-4 overflow-x-auto">
-                <pre id="responseJson" class="text-green-400 text-sm font-mono whitespace-pre-wrap"></pre>
+          <div id="responseContainer" class="hidden">
+            <div class="border-t border-white/20 pt-6">
+              <h3 class="text-xl font-semibold mb-4">API response</h3>
+              <div class="space-y-4">
+                <div id="responseStatus" class="px-4 py-3 rounded-lg font-mono text-sm"></div>
+                <div class="bg-black/30 rounded-lg p-4 overflow-x-auto">
+                  <pre id="responseJson" class="text-green-400 text-sm font-mono whitespace-pre-wrap"></pre>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div id="errorMessage" class="hidden bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg">
-        </div>
+          <div id="errorMessage"
+            class="hidden bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg"></div>
+          <div id="successMessage"
+            class="hidden bg-green-500/20 border border-green-500/50 text-green-200 px-4 py-3 rounded-lg"></div>
+        </section>
+
+        <!-- Правая колонка: галерея -->
+        <section class="space-y-6">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <h2 class="text-2xl font-semibold">User gallery</h2>
+            <button id="loadGalleryBtn" type="button"
+              class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 transition disabled:opacity-50 disabled:cursor-not-allowed">
+              Load gallery
+            </button>
+          </div>
+
+          <div class="bg-white/5 rounded-xl border border-white/10 p-4">
+            <p class="text-sm text-white/70">
+              Enter User ID and click Load gallery to see uploaded avatars.
+            </p>
+          </div>
+
+          <div id="galleryEmpty"
+            class="hidden bg-white/5 border border-white/10 rounded-xl p-6 text-center text-white/70">
+            No avatars found for this user
+          </div>
+
+          <div id="galleryGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+        </section>
       </main>
+    </div>
+  </div>
+
+  <!-- Fullscreen overlay -->
+  <div id="actionOverlay"
+    class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center px-4">
+    <div class="w-full max-w-md bg-white/10 border border-white/20 rounded-2xl shadow-2xl p-8 text-center">
+      <div id="overlayLoadingBlock" class="space-y-5">
+        <!-- ЗАМЕНИ src НА СВОЮ GIF -->
+        <img id="overlayGif" src="/static/cat-eat.gif" alt="Loading" class="w-40 h-40 object-contain mx-auto rounded-xl" />
+
+        <div id="overlayFallbackSpinner"
+          class="hidden w-16 h-16 border-4 border-white/20 border-t-purple-400 rounded-full animate-spin mx-auto"></div>
+
+        <h3 id="overlayTitle" class="text-2xl font-bold text-white">Processing...</h3>
+        <p id="overlayMessage" class="text-white/70">Please wait</p>
+      </div>
+
+      <div id="overlayResultBlock" class="hidden space-y-4">
+        <div id="overlayResultIcon" class="text-6xl"></div>
+        <h3 id="overlayResultTitle" class="text-2xl font-bold text-white"></h3>
+        <p id="overlayResultMessage" class="text-white/70"></p>
+        <div id="overlayResultBadge" class="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium"></div>
+      </div>
     </div>
   </div>
 
   <script>
     const form = document.getElementById('uploadForm');
+    const userIdInput = document.getElementById('userId');
     const imageInput = document.getElementById('image');
+    const dropZone = document.getElementById('dropZone');
+    const selectFileBtn = document.getElementById('selectFileBtn');
+    const selectedFileName = document.getElementById('selectedFileName');
+
     const imagePreview = document.getElementById('imagePreview');
     const previewImg = document.getElementById('previewImg');
+
     const submitBtn = document.getElementById('submitBtn');
-    const btnText = document.getElementById('btnText');
-    const btnLoader = document.getElementById('btnLoader');
     const responseContainer = document.getElementById('responseContainer');
     const responseStatus = document.getElementById('responseStatus');
     const responseJson = document.getElementById('responseJson');
-    const errorMessage = document.getElementById('errorMessage');
 
-    imageInput.addEventListener('change', function (e) {
-      const file = e.target.files[0];
-      if (file && file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-          previewImg.src = e.target.result;
-          imagePreview.classList.remove('hidden');
-        };
-        reader.readAsDataURL(file);
-      } else {
-        imagePreview.classList.add('hidden');
+    const errorMessage = document.getElementById('errorMessage');
+    const successMessage = document.getElementById('successMessage');
+
+    const loadGalleryBtn = document.getElementById('loadGalleryBtn');
+    const galleryEmpty = document.getElementById('galleryEmpty');
+    const galleryGrid = document.getElementById('galleryGrid');
+
+    const actionOverlay = document.getElementById('actionOverlay');
+    const overlayLoadingBlock = document.getElementById('overlayLoadingBlock');
+    const overlayResultBlock = document.getElementById('overlayResultBlock');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlayMessage = document.getElementById('overlayMessage');
+    const overlayGif = document.getElementById('overlayGif');
+    const overlayFallbackSpinner = document.getElementById('overlayFallbackSpinner');
+    const overlayResultIcon = document.getElementById('overlayResultIcon');
+    const overlayResultTitle = document.getElementById('overlayResultTitle');
+    const overlayResultMessage = document.getElementById('overlayResultMessage');
+    const overlayResultBadge = document.getElementById('overlayResultBadge');
+
+    let overlayTimer = null;
+    const MIN_OVERLAY_LOADING_MS = 1000;
+
+    selectFileBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      imageInput.click();
+    });
+
+    dropZone.addEventListener('click', () => imageInput.click());
+
+    imageInput.addEventListener('change', function () {
+      handleFile(imageInput.files[0]);
+    });
+
+    dropZone.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      dropZone.classList.add('border-purple-400', 'bg-white/10');
+    });
+
+    dropZone.addEventListener('dragleave', function () {
+      dropZone.classList.remove('border-purple-400', 'bg-white/10');
+    });
+
+    dropZone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dropZone.classList.remove('border-purple-400', 'bg-white/10');
+
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        imageInput.files = e.dataTransfer.files;
+        handleFile(file);
       }
     });
 
-    form.addEventListener('submit', async function (e) {
+    overlayGif.addEventListener('error', function () {
+      overlayGif.classList.add('hidden');
+      overlayFallbackSpinner.classList.remove('hidden');
+    });
+
+    function handleFile(file) {
+      if (!file) {
+        imagePreview.classList.add('hidden');
+        selectedFileName.classList.add('hidden');
+        return;
+      }
+
+      if (!file.type.startsWith('image/')) {
+        showError('Please select an image file');
+        imagePreview.classList.add('hidden');
+        selectedFileName.classList.add('hidden');
+        return;
+      }
+
+      hideError();
+
+      selectedFileName.textContent = `Selected file: ${file.name}`;
+      selectedFileName.classList.remove('hidden');
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        previewImg.src = e.target.result;
+        imagePreview.classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    form.addEventListener('submit', function (e) {
       e.preventDefault();
 
-      const userId = document.getElementById('userId').value;
+      const userId = userIdInput.value.trim();
       const imageFile = imageInput.files[0];
 
       if (!userId || !imageFile) {
@@ -122,72 +257,303 @@
         return;
       }
 
-      setLoading(true);
-      hideError();
-      hideResponse();
-
-      const formData = new FormData();
-      formData.append('image', imageFile);
-
-      try {
-        const response = await fetch('/api/v1/avatars', {
-          method: 'POST',
-          headers: {
-            'X-User-ID': userId
-          },
-          body: formData
-        });
-
-        const responseData = await response.text();
-        let parsedData;
-
-        try {
-          parsedData = JSON.parse(responseData);
-        } catch {
-          parsedData = responseData;
-        }
-
-        displayResponse(response, parsedData);
-
-      } catch (error) {
-        showError(`Network error: ${error.message}`);
-      } finally {
-        setLoading(false);
-      }
+      uploadAvatar(userId, imageFile);
     });
 
-    function setLoading(loading) {
-      if (loading) {
-        submitBtn.disabled = true;
-        btnText.classList.add('hidden');
-        btnLoader.classList.remove('hidden');
+    loadGalleryBtn.addEventListener('click', loadGallery);
+
+    function disableUI(disabled) {
+      submitBtn.disabled = disabled;
+      loadGalleryBtn.disabled = disabled;
+      userIdInput.disabled = disabled;
+      imageInput.disabled = disabled;
+    }
+
+    function showOverlayLoading(title, message) {
+      clearTimeout(overlayTimer);
+
+      actionOverlay.classList.remove('hidden');
+      overlayLoadingBlock.classList.remove('hidden');
+      overlayResultBlock.classList.add('hidden');
+
+      overlayTitle.textContent = title;
+      overlayMessage.textContent = message;
+
+      overlayGif.classList.remove('hidden');
+      overlayFallbackSpinner.classList.add('hidden');
+    }
+
+    function showOverlayResult(type, title, message, autoHide = true) {
+      overlayLoadingBlock.classList.add('hidden');
+      overlayResultBlock.classList.remove('hidden');
+
+      overlayResultTitle.textContent = title;
+      overlayResultMessage.textContent = message;
+
+      if (type === 'success') {
+        overlayResultBadge.textContent = 'SUCCESS';
+        overlayResultBadge.className =
+          'inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-green-500/20 border border-green-500/50 text-green-200';
       } else {
-        submitBtn.disabled = false;
-        btnText.classList.remove('hidden');
-        btnLoader.classList.add('hidden');
+        overlayResultBadge.textContent = 'FAILED';
+        overlayResultBadge.className =
+          'inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-red-500/20 border border-red-500/50 text-red-200';
+      }
+
+      if (autoHide) {
+        overlayTimer = setTimeout(() => {
+          hideOverlay();
+        }, type === 'success' ? 1400 : 2200);
       }
     }
 
-    function displayResponse(response, data) {
+    function hideOverlay() {
+      actionOverlay.classList.add('hidden');
+    }
+
+    async function runActionWithOverlay(action, options = {}) {
+      const {
+        loadingTitle = 'Processing...',
+        loadingMessage = 'Please wait',
+        successTitle = 'Success',
+        successMessage = 'Operation completed successfully',
+        errorTitle = 'Error',
+        getErrorMessage = null
+      } = options;
+
+      disableUI(true);
+      showOverlayLoading(loadingTitle, loadingMessage);
+      hideError();
+      hideSuccess();
+
+      const startedAt = Date.now();
+
+      try {
+        const result = await action();
+
+        const elapsed = Date.now() - startedAt;
+        const remaining = Math.max(0, MIN_OVERLAY_LOADING_MS - elapsed);
+
+        if (remaining > 0) {
+          await new Promise(resolve => setTimeout(resolve, remaining));
+        }
+
+        const finalSuccessMessage =
+          typeof successMessage === 'function' ? successMessage(result) : successMessage;
+
+        showOverlayResult('success', successTitle, finalSuccessMessage);
+        return result;
+      } catch (error) {
+        const elapsed = Date.now() - startedAt;
+        const remaining = Math.max(0, MIN_OVERLAY_LOADING_MS - elapsed);
+
+        if (remaining > 0) {
+          await new Promise(resolve => setTimeout(resolve, remaining));
+        }
+
+        const finalErrorMessage = getErrorMessage
+          ? getErrorMessage(error)
+          : (error.message || 'Operation failed');
+
+        showOverlayResult('error', errorTitle, finalErrorMessage);
+        throw error;
+      } finally {
+        disableUI(false);
+      }
+    }
+
+    function uploadAvatar(userId, imageFile) {
+      hideResponse();
+
+      runActionWithOverlay(
+        () => new Promise((resolve, reject) => {
+          const formData = new FormData();
+          formData.append('file', imageFile);
+
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', '/api/v1/avatars');
+          xhr.setRequestHeader('X-User-ID', userId);
+
+          xhr.upload.onprogress = function (e) {
+            if (e.lengthComputable) {
+              const percent = Math.round((e.loaded / e.total) * 100);
+              overlayMessage.textContent = `Uploading file... ${percent}%`;
+            }
+          };
+
+          xhr.onload = function () {
+            let parsedData;
+            try {
+              parsedData = JSON.parse(xhr.responseText);
+            } catch {
+              parsedData = xhr.responseText;
+            }
+
+            displayResponse(xhr.status, xhr.statusText, parsedData);
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+              showSuccess('Avatar uploaded. Processing task has been queued.');
+              loadGallerySilently(userId);
+              resolve({ status: xhr.status, statusText: xhr.statusText, data: parsedData });
+            } else {
+              showError(`Request failed: ${xhr.status} ${xhr.statusText}`);
+              reject(new Error(`Server returned ${xhr.status} ${xhr.statusText}`));
+            }
+          };
+
+          xhr.onerror = function () {
+            showError('Network error while uploading file');
+            reject(new Error('Network error while uploading file'));
+          };
+
+          xhr.send(formData);
+        }),
+        {
+          loadingTitle: 'Uploading avatar...',
+          loadingMessage: 'Please wait while the file is being sent',
+          successTitle: 'Upload completed',
+          successMessage: 'Avatar uploaded successfully',
+          errorTitle: 'Upload failed'
+        }
+      ).catch(() => { });
+    }
+
+    async function loadGallery() {
+      const userId = userIdInput.value.trim();
+
+      if (!userId) {
+        showError('Enter user ID first to load gallery');
+        return;
+      }
+
+      hideResponse();
+
+      try {
+        const data = await runActionWithOverlay(
+          () => fetchGallery(userId),
+          {
+            loadingTitle: 'Loading gallery...',
+            loadingMessage: 'Fetching user avatars',
+            successTitle: 'Gallery loaded',
+            successMessage: (items) =>
+              Array.isArray(items) && items.length > 0
+                ? `Found ${items.length} avatar(s)`
+                : 'No avatars found for this user',
+            errorTitle: 'Gallery load failed'
+          }
+        );
+
+        applyGalleryData(data);
+      } catch (_) { }
+    }
+
+    async function loadGallerySilently(userId) {
+      try {
+        const data = await fetchGallery(userId);
+        applyGalleryData(data);
+      } catch (_) { }
+    }
+
+    async function fetchGallery(userId) {
+      const response = await fetch(`/api/v1/users/${encodeURIComponent(userId)}/avatars`);
+      const data = await response.json().catch(() => []);
+
+      if (!response.ok) {
+        throw new Error(`Failed to load gallery: ${response.status} ${response.statusText}`);
+      }
+
+      return data;
+    }
+
+    function applyGalleryData(data) {
+      galleryGrid.innerHTML = '';
+      galleryEmpty.classList.add('hidden');
+
+      if (!Array.isArray(data) || data.length === 0) {
+        galleryEmpty.classList.remove('hidden');
+        return;
+      }
+
+      renderGallery(data);
+    }
+
+    function renderGallery(items) {
+      galleryGrid.innerHTML = '';
+
+      items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-lg';
+
+        const imageUrl =
+          item.url ||
+          item.avatar_url ||
+          item.original_url ||
+          (item.id ? `/api/v1/avatars/${item.id}` : '');
+
+        const createdAt = item.created_at
+          ? new Date(item.created_at).toLocaleString()
+          : 'Unknown date';
+
+        card.innerHTML = `
+          <div class="aspect-square bg-black/20 flex items-center justify-center overflow-hidden">
+            ${imageUrl
+            ? `<img src="${imageUrl}" alt="Avatar" class="w-full h-full object-cover" />`
+            : `<span class="text-white/50 text-sm">No preview</span>`}
+          </div>
+          <div class="p-4 space-y-2">
+            <div class="text-sm"><span class="text-white/60">ID:</span> <span class="font-mono break-all">${escapeHtml(item.id || '-')}</span></div>
+            <div class="text-sm"><span class="text-white/60">Status:</span> ${escapeHtml(item.processing_status || item.status || '-')}</div>
+            <div class="text-sm"><span class="text-white/60">Created:</span> ${escapeHtml(createdAt)}</div>
+            ${item.id ? `
+              <div class="pt-2 flex gap-2 flex-wrap">
+                <a
+                  href="/api/v1/avatars/${encodeURIComponent(item.id)}"
+                  target="_blank"
+                  class="inline-block px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition text-sm"
+                >
+                  Open avatar
+                </a>
+                <!-- Сюда потом легко добавишь delete -->
+                <!--
+                <button
+                  type="button"
+                  onclick="deleteAvatar('${String(item.id).replace(/'/g, "\\'")}')"
+                  class="inline-block px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition text-sm"
+                >
+                  Delete
+                </button>
+                -->
+              </div>
+            ` : ''}
+          </div>
+        `;
+
+        galleryGrid.appendChild(card);
+      });
+    }
+
+    function displayResponse(status, statusText, data) {
       responseContainer.classList.remove('hidden');
 
-      const statusClass = response.ok
-        ? response.status === 201 ? 'bg-green-500/20 border border-green-500/50 text-green-200'
+      const ok = status >= 200 && status < 300;
+      const statusClass = ok
+        ? status === 201
+          ? 'bg-green-500/20 border border-green-500/50 text-green-200'
           : 'bg-blue-500/20 border border-blue-500/50 text-blue-200'
         : 'bg-red-500/20 border border-red-500/50 text-red-200';
 
       responseStatus.className = `px-4 py-3 rounded-lg font-mono text-sm ${statusClass}`;
-      responseStatus.textContent = `HTTP ${response.status} ${response.statusText}`;
+      responseStatus.textContent = `HTTP ${status} ${statusText}`;
 
-      if (typeof data === 'object') {
+      if (typeof data === 'object' && data !== null) {
         responseJson.textContent = JSON.stringify(data, null, 2);
       } else {
-        responseJson.textContent = data;
+        responseJson.textContent = String(data ?? '');
       }
+    }
 
-      if (!response.ok) {
-        showError(`Request failed: ${response.status} ${response.statusText}`);
-      }
+    function hideResponse() {
+      responseContainer.classList.add('hidden');
     }
 
     function showError(message) {
@@ -197,11 +563,63 @@
 
     function hideError() {
       errorMessage.classList.add('hidden');
+      errorMessage.textContent = '';
     }
 
-    function hideResponse() {
-      responseContainer.classList.add('hidden');
+    function showSuccess(message) {
+      successMessage.textContent = message;
+      successMessage.classList.remove('hidden');
     }
+
+    function hideSuccess() {
+      successMessage.classList.add('hidden');
+      successMessage.textContent = '';
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    /*
+      Пример на будущее для delete:
+
+      async function deleteAvatar(avatarId) {
+        try {
+          await runActionWithOverlay(
+            async () => {
+              const response = await fetch(`/api/v1/avatars/${encodeURIComponent(avatarId)}`, {
+                method: 'DELETE'
+              });
+
+              const data = await response.json().catch(() => ({}));
+
+              if (!response.ok) {
+                throw new Error(`Delete failed: ${response.status} ${response.statusText}`);
+              }
+
+              return data;
+            },
+            {
+              loadingTitle: 'Deleting avatar...',
+              loadingMessage: 'Please wait while avatar is being deleted',
+              successTitle: 'Avatar deleted',
+              successMessage: 'The avatar was deleted successfully',
+              errorTitle: 'Delete failed'
+            }
+          );
+
+          showSuccess('Avatar deleted successfully');
+          loadGallerySilently(userIdInput.value.trim());
+        } catch (error) {
+          showError(error.message);
+        }
+      }
+    */
   </script>
 </body>
 
