@@ -34,3 +34,4 @@
 10. проверить Валидация MIME-типов и magic bytes
 11. Prometheus, Grafana сделать логирование сюда
 12. Loki/ELK/OpenSearch, Jaeger
+13. Всё упаковать в docker-compose чтобы с 1 файла прям запускалось и всё устанавливалось
