@@ -10,7 +10,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// Logger — минимальный интерфейс под твой логгер.
+// Logger — минимальный интерфейс под логгер.
 type Logger interface {
 	Info(args ...any)
 	Infof(template string, args ...any)
@@ -18,12 +18,12 @@ type Logger interface {
 	Errorf(template string, args ...any)
 }
 
-// UploadHandler — интерфейс сервиса, который будет обрабатывать событие загрузки.
+// UploadHandler — интерфейс сервиса обработки события загрузки.
 type UploadHandler interface {
 	HandleUpload(ctx context.Context, event AvatarUploadEvent) error
 }
 
-// RabbitConsumer слушает очередь RabbitMQ, читает сообщения и передаёт их в handler.
+// RabbitConsumer слушает очередь RabbitMQ и передаёт сообщения в handler.
 type RabbitConsumer struct {
 	ch      *amqp.Channel
 	cfg     config.RabbitMQConfig
@@ -31,29 +31,25 @@ type RabbitConsumer struct {
 	log     Logger
 }
 
-// NewRabbitConsumer — конструктор consumer.
 func NewRabbitConsumer(
 	ch *amqp.Channel,
 	cfg config.RabbitMQConfig,
 	handler UploadHandler,
-	sugar Logger,
+	log Logger,
 ) *RabbitConsumer {
 	return &RabbitConsumer{
 		ch:      ch,
 		cfg:     cfg,
 		handler: handler,
-		log:     sugar,
+		log:     log,
 	}
 }
 
-// Run запускает consumer.
 func (c *RabbitConsumer) Run(ctx context.Context) error {
-	// Создаём инфраструктуру RabbitMQ, если её ещё нет.
 	if err := c.declareInfrastructure(); err != nil {
 		return fmt.Errorf("declare rabbitmq infrastructure: %w", err)
 	}
 
-	// Подписываемся на очередь.
 	msgs, err := c.ch.Consume(
 		c.cfg.QueueUpload,
 		"",
@@ -96,7 +92,6 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 	}
 }
 
-// declareInfrastructure объявляет exchange, очередь и binding.
 func (c *RabbitConsumer) declareInfrastructure() error {
 	if err := c.ch.ExchangeDeclare(
 		c.cfg.Exchange,
@@ -139,7 +134,6 @@ func (c *RabbitConsumer) declareInfrastructure() error {
 	return nil
 }
 
-// handleMessage валидирует и десериализует сообщение, потом вызывает бизнес-логику.
 func (c *RabbitConsumer) handleMessage(ctx context.Context, msg amqp.Delivery) error {
 	var event AvatarUploadEvent
 
@@ -169,6 +163,5 @@ func (c *RabbitConsumer) handleMessage(ctx context.Context, msg amqp.Delivery) e
 	}
 
 	c.log.Infof("upload event processed successfully: avatar_id=%s", event.AvatarID)
-
 	return nil
 }

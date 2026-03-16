@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"path"
-	"path/filepath"
-	"strings"
 
 	"github.com/disintegration/imaging"
 
@@ -56,7 +54,6 @@ func (s *Service) HandleUpload(ctx context.Context, event AvatarUploadEvent) err
 		return nil
 	}
 
-	// Если вдруг уже в processing/completed/failed — можешь менять логику по желанию.
 	if err := s.avatarRepo.UpdateProcessingStatus(ctx, avatar.ID, "processing"); err != nil {
 		return fmt.Errorf("update processing status to processing: %w", err)
 	}
@@ -74,13 +71,13 @@ func (s *Service) HandleUpload(ctx context.Context, event AvatarUploadEvent) err
 }
 
 func (s *Service) processAvatar(ctx context.Context, avatar *repository.Avatar) error {
-	reader, err := s.storage.Download(ctx, avatar.S3Key)
+	downloaded, err := s.storage.Download(ctx, avatar.S3Key)
 	if err != nil {
 		return fmt.Errorf("download original from minio: %w", err)
 	}
-	defer reader.Close()
+	defer downloaded.Reader.Close()
 
-	originalBytes, err := io.ReadAll(reader)
+	originalBytes, err := io.ReadAll(downloaded.Reader)
 	if err != nil {
 		return fmt.Errorf("read original image: %w", err)
 	}
@@ -104,12 +101,6 @@ func (s *Service) processAvatar(ctx context.Context, avatar *repository.Avatar) 
 	}
 
 	baseDir := path.Dir(avatar.S3Key)
-	originalExt := strings.ToLower(filepath.Ext(avatar.S3Key))
-	if originalExt == "" {
-		originalExt = ".jpg"
-	}
-
-	_ = originalExt // пока не используем, оставил на будущее
 
 	thumb100Key := fmt.Sprintf("%s/100x100.jpg", baseDir)
 	thumb300Key := fmt.Sprintf("%s/300x300.jpg", baseDir)

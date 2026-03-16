@@ -26,18 +26,34 @@ func (s *MinIOStorage) Upload(ctx context.Context, key string, body io.Reader, s
 	return err
 }
 
+type DownloadResult struct {
+	Reader      io.ReadCloser
+	Size        int64
+	ContentType string
+}
+
 // Download возвращает объект из MinIO.
 // Закрывать reader должен вызывающий код.
-func (s *MinIOStorage) Download(ctx context.Context, key string) (io.ReadCloser, error) {
+func (s *MinIOStorage) Download(ctx context.Context, key string) (*DownloadResult, error) {
 	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := obj.Stat(); err != nil {
+	info, err := obj.Stat()
+	if err != nil {
 		_ = obj.Close()
 		return nil, err
 	}
 
-	return obj, nil
+	contentType := info.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	return &DownloadResult{
+		Reader:      obj,
+		Size:        info.Size,
+		ContentType: contentType,
+	}, nil
 }

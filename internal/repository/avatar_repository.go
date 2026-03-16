@@ -26,6 +26,7 @@ type Avatar struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	DeletedAt        sql.NullTime
+	IsCurrent        bool
 }
 
 type CreateAvatarParams struct {
@@ -168,4 +169,179 @@ func (r *AvatarRepository) FailProcessing(ctx context.Context, avatarID string) 
 
 	_, err := r.db.ExecContext(ctx, query, avatarID)
 	return err
+}
+
+// получение главной аватарки пользователя
+func (r *AvatarRepository) GetUserAvatar(ctx context.Context, userID string) (*Avatar, error) {
+	const query = `
+		SELECT
+			id,
+			user_id,
+			file_name,
+			mime_type,
+			size_bytes,
+			s3_key,
+			thumbnail_s3_keys,
+			upload_status,
+			processing_status,
+			created_at,
+			updated_at,
+			deleted_at,
+			is_current
+		FROM avatars
+		WHERE user_id = $1
+		  AND is_current
+		  AND deleted_at IS NULL
+		LIMIT 1
+	`
+
+	var avatar Avatar
+	err := r.db.QueryRowContext(ctx, query, userID).Scan(
+		&avatar.ID,
+		&avatar.UserID,
+		&avatar.FileName,
+		&avatar.MimeType,
+		&avatar.SizeBytes,
+		&avatar.S3Key,
+		&avatar.ThumbnailS3Keys,
+		&avatar.UploadStatus,
+		&avatar.ProcessingStatus,
+		&avatar.CreatedAt,
+		&avatar.UpdatedAt,
+		&avatar.DeletedAt,
+		&avatar.IsCurrent,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrAvatarNotFound
+		}
+		return nil, err
+	}
+
+	return &avatar, nil
+}
+
+// получение списка аватарок пользователя
+func (r *AvatarRepository) GetListUserAvatar(ctx context.Context, userID string) ([]Avatar, error) {
+	const query = `
+		SELECT
+			id,
+			user_id,
+			file_name,
+			mime_type,
+			size_bytes,
+			s3_key,
+			thumbnail_s3_keys,
+			upload_status,
+			processing_status,
+			created_at,
+			updated_at,
+			deleted_at,
+			is_current
+		FROM avatars
+		WHERE user_id = $1
+		  AND deleted_at IS NULL
+		ORDER BY created_at DESC
+	`
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	avatars := make([]Avatar, 0)
+	for rows.Next() {
+		var avatar Avatar
+
+		if err := rows.Scan(
+			&avatar.ID,
+			&avatar.UserID,
+			&avatar.FileName,
+			&avatar.MimeType,
+			&avatar.SizeBytes,
+			&avatar.S3Key,
+			&avatar.ThumbnailS3Keys,
+			&avatar.UploadStatus,
+			&avatar.ProcessingStatus,
+			&avatar.CreatedAt,
+			&avatar.UpdatedAt,
+			&avatar.DeletedAt,
+			&avatar.IsCurrent,
+		); err != nil {
+			return nil, err
+		}
+
+		avatars = append(avatars, avatar)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return avatars, nil
+}
+
+// проверка, сброс всех и обновление у выставление нужной аватарки у пользователя в качестве главной
+func (r *AvatarRepository) SetCurrentAvatar(ctx context.Context, userID, avatarID string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Проверяем, что такая аватарка вообще есть у этого пользователя и не удалена
+	const checkQuery = `
+		SELECT 1
+		FROM avatars
+		WHERE id = $1
+		  AND user_id = $2
+		  AND deleted_at IS NULL
+	`
+
+	var exists int
+	if err := tx.QueryRowContext(ctx, checkQuery, avatarID, userID).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrAvatarNotFound
+		}
+		return err
+	}
+
+	// Снимаем current у всех аватарок пользователя
+	const resetQuery = `
+		UPDATE avatars
+		SET
+			is_current = false,
+			updated_at = NOW()
+		WHERE user_id = $1
+		  AND deleted_at IS NULL
+		  AND is_current = true
+	`
+
+	if _, err := tx.ExecContext(ctx, resetQuery, userID); err != nil {
+		return err
+	}
+
+	// Ставим current у выбранной аватарки
+	const setQuery = `
+		UPDATE avatars
+		SET
+			is_current = true,
+			updated_at = NOW()
+		WHERE id = $1
+		  AND user_id = $2
+		  AND deleted_at IS NULL
+	`
+
+	result, err := tx.ExecContext(ctx, setQuery, avatarID, userID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrAvatarNotFound
+	}
+
+	return tx.Commit()
 }

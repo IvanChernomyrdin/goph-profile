@@ -5,6 +5,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GophProfile Avatar Upload</title>
+
+  <link rel="preload" as="image" href="/static/cat-eat.gif" />
+
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script>
     tailwind.config = {
@@ -20,15 +23,14 @@
 </head>
 
 <body class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-  <div class="container mx-auto px-4 py-8 max-w-5xl">
+  <div id="pageShell" class="container mx-auto px-4 py-8 max-w-6xl transition-all duration-200">
     <div class="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
       <header class="bg-gradient-to-r from-purple-600 to-blue-600 p-6">
         <h1 class="text-3xl font-bold text-center">GophProfile</h1>
-        <p class="text-white/80 text-center mt-2">Upload, preview and view your avatars</p>
+        <p class="text-white/80 text-center mt-2">Upload, preview, browse and manage user avatars</p>
       </header>
 
       <main class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <!-- Левая колонка: загрузка -->
         <section class="space-y-6">
           <div>
             <h2 class="text-2xl font-semibold mb-4">Upload avatar</h2>
@@ -49,7 +51,9 @@
 
                 <div id="dropZone"
                   class="border-2 border-dashed border-white/30 rounded-xl p-6 text-center bg-white/5 hover:bg-white/10 transition cursor-pointer">
-                  <input type="file" id="image" name="image" accept="image/*" required class="hidden" />
+                  <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp,image/gif" required
+                    class="hidden" />
+
                   <div class="space-y-2">
                     <p class="text-lg font-medium">Drag & drop image here</p>
                     <p class="text-white/60 text-sm">or click to choose a file</p>
@@ -61,6 +65,15 @@
                 </div>
 
                 <p id="selectedFileName" class="mt-3 text-sm text-white/70 hidden"></p>
+              </div>
+
+              <!-- Прелоадер для выбранного изображения -->
+              <div id="imagePreviewLoader" class="hidden">
+                <div
+                  class="flex items-center justify-center space-x-3 p-4 bg-white/5 rounded-lg border border-white/10">
+                  <div class="w-8 h-8 border-4 border-white/20 border-t-purple-400 rounded-full animate-spin"></div>
+                  <span class="text-white/70">Loading preview...</span>
+                </div>
               </div>
 
               <div id="imagePreview" class="hidden">
@@ -75,29 +88,12 @@
               </button>
             </form>
           </div>
-
-          <div id="responseContainer" class="hidden">
-            <div class="border-t border-white/20 pt-6">
-              <h3 class="text-xl font-semibold mb-4">API response</h3>
-              <div class="space-y-4">
-                <div id="responseStatus" class="px-4 py-3 rounded-lg font-mono text-sm"></div>
-                <div class="bg-black/30 rounded-lg p-4 overflow-x-auto">
-                  <pre id="responseJson" class="text-green-400 text-sm font-mono whitespace-pre-wrap"></pre>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div id="errorMessage"
-            class="hidden bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg"></div>
-          <div id="successMessage"
-            class="hidden bg-green-500/20 border border-green-500/50 text-green-200 px-4 py-3 rounded-lg"></div>
         </section>
 
-        <!-- Правая колонка: галерея -->
         <section class="space-y-6">
           <div class="flex items-center justify-between gap-3 flex-wrap">
             <h2 class="text-2xl font-semibold">User gallery</h2>
+
             <button id="loadGalleryBtn" type="button"
               class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 transition disabled:opacity-50 disabled:cursor-not-allowed">
               Load gallery
@@ -115,19 +111,19 @@
             No avatars found for this user
           </div>
 
-          <div id="galleryGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+          <div id="galleryGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </section>
       </main>
     </div>
   </div>
 
-  <!-- Fullscreen overlay -->
+  <!-- Оверлей для длительных операций -->
   <div id="actionOverlay"
-    class="hidden fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center px-4">
+    class="pointer-events-none opacity-0 fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center px-4 transition-all duration-200">
     <div class="w-full max-w-md bg-white/10 border border-white/20 rounded-2xl shadow-2xl p-8 text-center">
       <div id="overlayLoadingBlock" class="space-y-5">
-        <!-- ЗАМЕНИ src НА СВОЮ GIF -->
-        <img id="overlayGif" src="/static/cat-eat.gif" alt="Loading" class="w-40 h-40 object-contain mx-auto rounded-xl" />
+        <img id="overlayGif" src="/static/cat-eat.gif" alt="Loading"
+          class="w-40 h-40 object-contain mx-auto rounded-xl" />
 
         <div id="overlayFallbackSpinner"
           class="hidden w-16 h-16 border-4 border-white/20 border-t-purple-400 rounded-full animate-spin mx-auto"></div>
@@ -137,7 +133,7 @@
       </div>
 
       <div id="overlayResultBlock" class="hidden space-y-4">
-        <div id="overlayResultIcon" class="text-6xl"></div>
+        <div id="overlayResultIcon"></div>
         <h3 id="overlayResultTitle" class="text-2xl font-bold text-white"></h3>
         <p id="overlayResultMessage" class="text-white/70"></p>
         <div id="overlayResultBadge" class="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium"></div>
@@ -153,20 +149,17 @@
     const selectFileBtn = document.getElementById('selectFileBtn');
     const selectedFileName = document.getElementById('selectedFileName');
 
+    const imagePreviewLoader = document.getElementById('imagePreviewLoader');
     const imagePreview = document.getElementById('imagePreview');
     const previewImg = document.getElementById('previewImg');
 
     const submitBtn = document.getElementById('submitBtn');
-    const responseContainer = document.getElementById('responseContainer');
-    const responseStatus = document.getElementById('responseStatus');
-    const responseJson = document.getElementById('responseJson');
-
-    const errorMessage = document.getElementById('errorMessage');
-    const successMessage = document.getElementById('successMessage');
 
     const loadGalleryBtn = document.getElementById('loadGalleryBtn');
     const galleryEmpty = document.getElementById('galleryEmpty');
     const galleryGrid = document.getElementById('galleryGrid');
+
+    const pageShell = document.getElementById('pageShell');
 
     const actionOverlay = document.getElementById('actionOverlay');
     const overlayLoadingBlock = document.getElementById('overlayLoadingBlock');
@@ -181,7 +174,9 @@
     const overlayResultBadge = document.getElementById('overlayResultBadge');
 
     let overlayTimer = null;
-    const MIN_OVERLAY_LOADING_MS = 1000;
+    let currentPreviewObjectUrl = null;
+
+    const MIN_OVERLAY_LOADING_MS = 900;
 
     selectFileBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -219,33 +214,6 @@
       overlayFallbackSpinner.classList.remove('hidden');
     });
 
-    function handleFile(file) {
-      if (!file) {
-        imagePreview.classList.add('hidden');
-        selectedFileName.classList.add('hidden');
-        return;
-      }
-
-      if (!file.type.startsWith('image/')) {
-        showError('Please select an image file');
-        imagePreview.classList.add('hidden');
-        selectedFileName.classList.add('hidden');
-        return;
-      }
-
-      hideError();
-
-      selectedFileName.textContent = `Selected file: ${file.name}`;
-      selectedFileName.classList.remove('hidden');
-
-      const reader = new FileReader();
-      reader.onload = function (e) {
-        previewImg.src = e.target.result;
-        imagePreview.classList.remove('hidden');
-      };
-      reader.readAsDataURL(file);
-    }
-
     form.addEventListener('submit', function (e) {
       e.preventDefault();
 
@@ -253,7 +221,7 @@
       const imageFile = imageInput.files[0];
 
       if (!userId || !imageFile) {
-        showError('Please fill in all required fields');
+        alert('Please fill in all required fields');
         return;
       }
 
@@ -261,6 +229,62 @@
     });
 
     loadGalleryBtn.addEventListener('click', loadGallery);
+
+    function handleFile(file) {
+      if (!file) {
+        clearPreview();
+        return;
+      }
+
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        clearPreview();
+        return;
+      }
+
+      selectedFileName.textContent = `Selected file: ${file.name} (${formatBytes(file.size)})`;
+      selectedFileName.classList.remove('hidden');
+
+      // Показываем прелоадер
+      imagePreviewLoader.classList.remove('hidden');
+      imagePreview.classList.add('hidden');
+
+      if (currentPreviewObjectUrl) {
+        URL.revokeObjectURL(currentPreviewObjectUrl);
+        currentPreviewObjectUrl = null;
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+      currentPreviewObjectUrl = objectUrl;
+
+      previewImg.onload = function () {
+        // Скрываем прелоадер и показываем превью
+        imagePreviewLoader.classList.add('hidden');
+        imagePreview.classList.remove('hidden');
+      };
+
+      previewImg.onerror = function () {
+        imagePreviewLoader.classList.add('hidden');
+        alert('Failed to render image preview');
+      };
+
+      previewImg.src = objectUrl;
+    }
+
+    function clearPreview() {
+      if (currentPreviewObjectUrl) {
+        URL.revokeObjectURL(currentPreviewObjectUrl);
+        currentPreviewObjectUrl = null;
+      }
+
+      previewImg.onload = null;
+      previewImg.onerror = null;
+      previewImg.removeAttribute('src');
+      imagePreview.classList.add('hidden');
+      imagePreviewLoader.classList.add('hidden');
+      selectedFileName.classList.add('hidden');
+      selectedFileName.textContent = '';
+    }
 
     function disableUI(disabled) {
       submitBtn.disabled = disabled;
@@ -272,20 +296,42 @@
     function showOverlayLoading(title, message) {
       clearTimeout(overlayTimer);
 
-      actionOverlay.classList.remove('hidden');
       overlayLoadingBlock.classList.remove('hidden');
       overlayResultBlock.classList.add('hidden');
 
       overlayTitle.textContent = title;
       overlayMessage.textContent = message;
+      overlayResultIcon.innerHTML = '';
 
       overlayGif.classList.remove('hidden');
       overlayFallbackSpinner.classList.add('hidden');
+
+      actionOverlay.classList.remove('pointer-events-none', 'opacity-0');
+      actionOverlay.classList.add('pointer-events-auto', 'opacity-100');
+
+      pageShell.classList.add('scale-[0.99]', 'blur-[1px]', 'opacity-80');
     }
 
     function showOverlayResult(type, title, message, autoHide = true) {
       overlayLoadingBlock.classList.add('hidden');
       overlayResultBlock.classList.remove('hidden');
+
+      overlayResultIcon.innerHTML = type === 'success'
+        ? `
+          <div class="mx-auto w-20 h-20 rounded-full bg-green-500/15 border border-green-400/30 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-green-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6 9 17l-5-5"/>
+            </svg>
+          </div>
+        `
+        : `
+          <div class="mx-auto w-20 h-20 rounded-full bg-red-500/15 border border-red-400/30 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-red-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 6 6 18"/>
+              <path d="m6 6 12 12"/>
+            </svg>
+          </div>
+        `;
 
       overlayResultTitle.textContent = title;
       overlayResultMessage.textContent = message;
@@ -303,12 +349,15 @@
       if (autoHide) {
         overlayTimer = setTimeout(() => {
           hideOverlay();
-        }, type === 'success' ? 1400 : 2200);
+        }, type === 'success' ? 1200 : 2200);
       }
     }
 
     function hideOverlay() {
-      actionOverlay.classList.add('hidden');
+      actionOverlay.classList.remove('pointer-events-auto', 'opacity-100');
+      actionOverlay.classList.add('pointer-events-none', 'opacity-0');
+
+      pageShell.classList.remove('scale-[0.99]', 'blur-[1px]', 'opacity-80');
     }
 
     async function runActionWithOverlay(action, options = {}) {
@@ -323,8 +372,6 @@
 
       disableUI(true);
       showOverlayLoading(loadingTitle, loadingMessage);
-      hideError();
-      hideSuccess();
 
       const startedAt = Date.now();
 
@@ -363,8 +410,6 @@
     }
 
     function uploadAvatar(userId, imageFile) {
-      hideResponse();
-
       runActionWithOverlay(
         () => new Promise((resolve, reject) => {
           const formData = new FormData();
@@ -389,20 +434,16 @@
               parsedData = xhr.responseText;
             }
 
-            displayResponse(xhr.status, xhr.statusText, parsedData);
-
             if (xhr.status >= 200 && xhr.status < 300) {
-              showSuccess('Avatar uploaded. Processing task has been queued.');
               loadGallerySilently(userId);
               resolve({ status: xhr.status, statusText: xhr.statusText, data: parsedData });
             } else {
-              showError(`Request failed: ${xhr.status} ${xhr.statusText}`);
-              reject(new Error(`Server returned ${xhr.status} ${xhr.statusText}`));
+              const details = parsedData?.details || parsedData?.error || `Server returned ${xhr.status} ${xhr.statusText}`;
+              reject(new Error(details));
             }
           };
 
           xhr.onerror = function () {
-            showError('Network error while uploading file');
             reject(new Error('Network error while uploading file'));
           };
 
@@ -422,11 +463,9 @@
       const userId = userIdInput.value.trim();
 
       if (!userId) {
-        showError('Enter user ID first to load gallery');
+        alert('Enter user ID first to load gallery');
         return;
       }
-
-      hideResponse();
 
       try {
         const data = await runActionWithOverlay(
@@ -443,14 +482,14 @@
           }
         );
 
-        applyGalleryData(data);
+        applyGalleryData(data, userId);
       } catch (_) { }
     }
 
     async function loadGallerySilently(userId) {
       try {
         const data = await fetchGallery(userId);
-        applyGalleryData(data);
+        applyGalleryData(data, userId);
       } catch (_) { }
     }
 
@@ -459,13 +498,15 @@
       const data = await response.json().catch(() => []);
 
       if (!response.ok) {
-        throw new Error(`Failed to load gallery: ${response.status} ${response.statusText}`);
+        throw new Error(
+          data?.details || data?.error || `Failed to load gallery: ${response.status} ${response.statusText}`
+        );
       }
 
       return data;
     }
 
-    function applyGalleryData(data) {
+    function applyGalleryData(data, userId) {
       galleryGrid.innerHTML = '';
       galleryEmpty.classList.add('hidden');
 
@@ -474,106 +515,304 @@
         return;
       }
 
-      renderGallery(data);
+      renderGallery(data, userId);
     }
 
-    function renderGallery(items) {
+    function renderGallery(items, userId) {
       galleryGrid.innerHTML = '';
 
-      items.forEach(item => {
+      items.forEach((item) => {
         const card = document.createElement('div');
         card.className = 'bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-lg';
 
-        const imageUrl =
-          item.url ||
-          item.avatar_url ||
-          item.original_url ||
-          (item.id ? `/api/v1/avatars/${item.id}` : '');
+        const originalUrl = item.id ? `/api/v1/avatars/${encodeURIComponent(item.id)}` : '';
+        const isCurrent = Boolean(item.is_current);
 
-        const createdAt = item.created_at
-          ? new Date(item.created_at).toLocaleString()
-          : 'Unknown date';
+        const thumb100 = getThumbnailUrl(item, '100x100');
+        const thumb300 = getThumbnailUrl(item, '300x300');
 
         card.innerHTML = `
-          <div class="aspect-square bg-black/20 flex items-center justify-center overflow-hidden">
-            ${imageUrl
-            ? `<img src="${imageUrl}" alt="Avatar" class="w-full h-full object-cover" />`
-            : `<span class="text-white/50 text-sm">No preview</span>`}
-          </div>
-          <div class="p-4 space-y-2">
-            <div class="text-sm"><span class="text-white/60">ID:</span> <span class="font-mono break-all">${escapeHtml(item.id || '-')}</span></div>
-            <div class="text-sm"><span class="text-white/60">Status:</span> ${escapeHtml(item.processing_status || item.status || '-')}</div>
-            <div class="text-sm"><span class="text-white/60">Created:</span> ${escapeHtml(createdAt)}</div>
-            ${item.id ? `
-              <div class="pt-2 flex gap-2 flex-wrap">
-                <a
-                  href="/api/v1/avatars/${encodeURIComponent(item.id)}"
-                  target="_blank"
-                  class="inline-block px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition text-sm"
-                >
-                  Open avatar
-                </a>
-                <!-- Сюда потом легко добавишь delete -->
-                <!--
-                <button
-                  type="button"
-                  onclick="deleteAvatar('${String(item.id).replace(/'/g, "\\'")}')"
-                  class="inline-block px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition text-sm"
-                >
-                  Delete
-                </button>
-                -->
-              </div>
-            ` : ''}
-          </div>
-        `;
+      <div class="aspect-square bg-black/20 flex items-center justify-center overflow-hidden relative">
+        ${originalUrl
+            ? `<img src="${originalUrl}" alt="Avatar" class="w-full h-full object-cover" />`
+            : `<span class="text-white/50 text-sm">No preview</span>`
+          }
+
+        ${isCurrent
+            ? `<div class="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 border border-green-500/50 text-green-200">MAIN</div>`
+            : ''
+          }
+      </div>
+
+      <div class="p-4">
+        <div class="flex gap-2 flex-wrap">
+          <a
+            href="${originalUrl}"
+            target="_blank"
+            class="inline-block px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition text-sm"
+          >
+            Open original
+          </a>
+
+          ${thumb100
+            ? `
+              <a
+                href="${thumb100}"
+                target="_blank"
+                class="inline-block px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 transition text-sm"
+              >
+                Open 100x100
+              </a>
+            `
+            : ''
+          }
+
+          ${thumb300
+            ? `
+              <a
+                href="${thumb300}"
+                target="_blank"
+                class="inline-block px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 transition text-sm"
+              >
+                Open 300x300
+              </a>
+            `
+            : ''
+          }
+
+          <!-- Кнопка удаления для всех аватарок, включая MAIN -->
+          <button
+            type="button"
+            class="inline-block px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition text-sm"
+            data-action="delete-avatar"
+            data-avatar-id="${escapeHtml(item.id || '')}"
+            data-user-id="${escapeHtml(userId || '')}"
+          >
+            Delete
+          </button>
+
+          ${isCurrent
+            ? `
+              <!-- Дополнительная кнопка для удаления именно current (дублирует функционал) -->
+              <button
+                type="button"
+                class="inline-block px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 transition text-sm"
+                data-action="delete-current"
+                data-user-id="${escapeHtml(userId || '')}"
+              >
+                Delete current
+              </button>
+            `
+            : `
+              <button
+                type="button"
+                class="inline-block px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 transition text-sm"
+                data-action="make-current"
+                data-avatar-id="${escapeHtml(item.id || '')}"
+                data-user-id="${escapeHtml(userId || '')}"
+              >
+                Make current
+              </button>
+            `
+          }
+        </div>
+      </div>
+    `;
 
         galleryGrid.appendChild(card);
       });
+
+      // Обработчики для всех кнопок
+      galleryGrid.querySelectorAll('[data-action="delete-avatar"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const avatarId = btn.getAttribute('data-avatar-id');
+          const userId = btn.getAttribute('data-user-id');
+          deleteAvatarById(avatarId, userId);
+        });
+      });
+
+      galleryGrid.querySelectorAll('[data-action="delete-current"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const userId = btn.getAttribute('data-user-id');
+          deleteCurrentUserAvatar(userId);
+        });
+      });
+
+      galleryGrid.querySelectorAll('[data-action="make-current"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const avatarId = btn.getAttribute('data-avatar-id');
+          const userId = btn.getAttribute('data-user-id');
+          makeAvatarCurrent(avatarId, userId);
+        });
+      });
     }
 
-    function displayResponse(status, statusText, data) {
-      responseContainer.classList.remove('hidden');
+    function getThumbnailUrl(item, size) {
+      if (!item) return '';
 
-      const ok = status >= 200 && status < 300;
-      const statusClass = ok
-        ? status === 201
-          ? 'bg-green-500/20 border border-green-500/50 text-green-200'
-          : 'bg-blue-500/20 border border-blue-500/50 text-blue-200'
-        : 'bg-red-500/20 border border-red-500/50 text-red-200';
+      if (item.thumbnail_urls && typeof item.thumbnail_urls === 'object' && item.thumbnail_urls[size]) {
+        return item.thumbnail_urls[size];
+      }
 
-      responseStatus.className = `px-4 py-3 rounded-lg font-mono text-sm ${statusClass}`;
-      responseStatus.textContent = `HTTP ${status} ${statusText}`;
+      if (Array.isArray(item.thumbnails)) {
+        const found = item.thumbnails.find(x => x && x.size === size && x.url);
+        if (found) return found.url;
+      }
 
-      if (typeof data === 'object' && data !== null) {
-        responseJson.textContent = JSON.stringify(data, null, 2);
-      } else {
-        responseJson.textContent = String(data ?? '');
+      let parsedKeys = null;
+      if (item.thumbnail_s3_keys) {
+        try {
+          parsedKeys = typeof item.thumbnail_s3_keys === 'string'
+            ? JSON.parse(item.thumbnail_s3_keys)
+            : item.thumbnail_s3_keys;
+        } catch (_) { }
+      }
+
+      if (parsedKeys && typeof parsedKeys === 'object') {
+        if (Array.isArray(parsedKeys)) {
+          const hasSize = parsedKeys.some(x => {
+            if (typeof x === 'string') return x.includes(size);
+            if (x && typeof x === 'object') return x.size === size || String(x.key || '').includes(size);
+            return false;
+          });
+          if (hasSize && item.id) {
+            return `/api/v1/avatars/${encodeURIComponent(item.id)}?size=${encodeURIComponent(size)}`;
+          }
+        } else if (parsedKeys[size] && item.id) {
+          return `/api/v1/avatars/${encodeURIComponent(item.id)}?size=${encodeURIComponent(size)}`;
+        }
+      }
+
+      return '';
+    }
+
+    async function makeAvatarCurrent(avatarId, userId) {
+      if (!avatarId) {
+        alert('Avatar ID is missing');
+        return;
+      }
+
+      try {
+        await runActionWithOverlay(
+          async () => {
+            const response = await fetch(`/api/v1/avatars/${encodeURIComponent(avatarId)}/current`, {
+              method: 'PATCH',
+              headers: {
+                'X-User-ID': userId
+              }
+            });
+
+            let data = null;
+            try {
+              data = await response.json();
+            } catch (_) { }
+
+            if (!response.ok) {
+              const details = data?.details || data?.error || `${response.status} ${response.statusText}`;
+              throw new Error(details);
+            }
+
+            return data;
+          },
+          {
+            loadingTitle: 'Updating main avatar...',
+            loadingMessage: 'Please wait while the avatar is being updated',
+            successTitle: 'Main avatar updated',
+            successMessage: 'Avatar is now current',
+            errorTitle: 'Update failed'
+          }
+        );
+
+        await loadGallerySilently(userId || userIdInput.value.trim());
+      } catch (error) {
+        alert(error.message || 'Failed to set current avatar');
       }
     }
 
-    function hideResponse() {
-      responseContainer.classList.add('hidden');
+    async function deleteAvatarById(avatarId, userId) {
+      if (!avatarId) {
+        alert('Avatar ID is missing');
+        return;
+      }
+
+      const confirmed = window.confirm(`Delete avatar?`);
+      if (!confirmed) return;
+
+      try {
+        await runActionWithOverlay(
+          async () => {
+            const response = await fetch(`/api/v1/avatars/${encodeURIComponent(avatarId)}`, {
+              method: 'DELETE'
+            });
+
+            let data = null;
+            try {
+              data = await response.json();
+            } catch (_) { }
+
+            if (!response.ok) {
+              const details = data?.details || data?.error || `${response.status} ${response.statusText}`;
+              throw new Error(details);
+            }
+
+            return data;
+          },
+          {
+            loadingTitle: 'Deleting avatar...',
+            loadingMessage: 'Please wait while the avatar is being removed',
+            successTitle: 'Avatar deleted',
+            successMessage: 'Avatar deleted successfully',
+            errorTitle: 'Delete failed'
+          }
+        );
+
+        await loadGallerySilently(userId || userIdInput.value.trim());
+      } catch (error) {
+        alert(error.message || 'Failed to delete avatar');
+      }
     }
 
-    function showError(message) {
-      errorMessage.textContent = message;
-      errorMessage.classList.remove('hidden');
-    }
+    async function deleteCurrentUserAvatar(userId) {
+      if (!userId) {
+        alert('User ID is required');
+        return;
+      }
 
-    function hideError() {
-      errorMessage.classList.add('hidden');
-      errorMessage.textContent = '';
-    }
+      const confirmed = window.confirm(`Delete current avatar?`);
+      if (!confirmed) return;
 
-    function showSuccess(message) {
-      successMessage.textContent = message;
-      successMessage.classList.remove('hidden');
-    }
+      try {
+        await runActionWithOverlay(
+          async () => {
+            const response = await fetch(`/api/v1/users/${encodeURIComponent(userId)}/avatar`, {
+              method: 'DELETE'
+            });
 
-    function hideSuccess() {
-      successMessage.classList.add('hidden');
-      successMessage.textContent = '';
+            let data = null;
+            try {
+              data = await response.json();
+            } catch (_) { }
+
+            if (!response.ok) {
+              const details = data?.details || data?.error || `${response.status} ${response.statusText}`;
+              throw new Error(details);
+            }
+
+            return data;
+          },
+          {
+            loadingTitle: 'Deleting current avatar...',
+            loadingMessage: 'Please wait while the avatar is being removed',
+            successTitle: 'Avatar deleted',
+            successMessage: 'Current user avatar deleted successfully',
+            errorTitle: 'Delete failed'
+          }
+        );
+
+        await loadGallerySilently(userId);
+      } catch (error) {
+        alert(error.message || 'Failed to delete current avatar');
+      }
     }
 
     function escapeHtml(value) {
@@ -585,41 +824,12 @@
         .replaceAll("'", '&#039;');
     }
 
-    /*
-      Пример на будущее для delete:
-
-      async function deleteAvatar(avatarId) {
-        try {
-          await runActionWithOverlay(
-            async () => {
-              const response = await fetch(`/api/v1/avatars/${encodeURIComponent(avatarId)}`, {
-                method: 'DELETE'
-              });
-
-              const data = await response.json().catch(() => ({}));
-
-              if (!response.ok) {
-                throw new Error(`Delete failed: ${response.status} ${response.statusText}`);
-              }
-
-              return data;
-            },
-            {
-              loadingTitle: 'Deleting avatar...',
-              loadingMessage: 'Please wait while avatar is being deleted',
-              successTitle: 'Avatar deleted',
-              successMessage: 'The avatar was deleted successfully',
-              errorTitle: 'Delete failed'
-            }
-          );
-
-          showSuccess('Avatar deleted successfully');
-          loadGallerySilently(userIdInput.value.trim());
-        } catch (error) {
-          showError(error.message);
-        }
-      }
-    */
+    function formatBytes(bytes) {
+      const value = Number(bytes) || 0;
+      if (value < 1024) return `${value} B`;
+      if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+      return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+    }
   </script>
 </body>
 

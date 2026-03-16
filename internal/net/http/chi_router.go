@@ -21,33 +21,25 @@ func NewRouter(h *api.Handler) http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		// Загрузка аватарки
 		r.Post("/avatars", h.UploadAvatar)
-		// Получение аватарки
-		r.Get("/avatars/{avatar_id}", h.GetAvatar)
+
+		// получение главной аватарки пользователя
 		r.Get("/users/{user_id}/avatar", h.GetUserAvatar)
+		// получение списка аватарок пользователя
+		r.Get("/users/{user_id}/avatars", h.GetUserAvatars)
+		// получение аватарки по ID
+		r.Get("/avatars/{avatar_id}", h.GetAvatar)
+		// установка аватарки на главную
+		r.Patch("/avatars/{avatar_id}/current", h.UpdateCurrentAvatar)
+
 		// Удаление аватарки
 		r.Delete("/avatars/{avatar_id}", h.DeleteAvatar)
 		r.Delete("/users/{user_id}/avatar", h.DeleteUserAvatar)
-		// Получение метаданных аватарки
-		r.Get("/avatars/{avatar_id}/metadata", h.GetAvatarMetadata)
-		// Список аватарок пользователя
-		r.Get("/users/{user_id}/avatars", h.GetUserAvatars)
 	})
 
-	// // Веб-интерфейс
-	// r.Route("/web", func(r chi.Router) {
-	// 	// форма загрузки
-	// 	r.Get("/", h.WebUploadPage)
-	// 	// обработка загрузки
-	// 	r.Post("/upload", h.WebUploadAvatar)
-	// 	// галерея аватарок
-	// 	r.Get("/gallery/{user_id}", h.WebGallery)
-	// })
-
-	// web
+	// web отрисовка
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "./web/static/index.html")
 	})
-
 	// статика для фронта
 	fileServer := http.FileServer(http.Dir("./web/static"))
 	r.Handle("/static/*", http.StripPrefix("/static/", fileServer))

@@ -3,11 +3,17 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io"
+	"strconv"
 	"strings"
 
 	"net/http"
 
 	constErr "goph-profile-avatars/internal/errors"
+	"goph-profile-avatars/internal/repository"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 const maxAvatarSize = 10 << 20 // 10 MB
@@ -89,12 +95,173 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, result)
 }
 
-func (h *Handler) GetAvatar(w http.ResponseWriter, r *http.Request)         {}
-func (h *Handler) GetUserAvatar(w http.ResponseWriter, r *http.Request)     {}
-func (h *Handler) DeleteAvatar(w http.ResponseWriter, r *http.Request)      {}
-func (h *Handler) DeleteUserAvatar(w http.ResponseWriter, r *http.Request)  {}
-func (h *Handler) GetAvatarMetadata(w http.ResponseWriter, r *http.Request) {}
-func (h *Handler) GetUserAvatars(w http.ResponseWriter, r *http.Request)    {}
+func (h *Handler) GetAvatar(w http.ResponseWriter, r *http.Request) {
+	avatarID := strings.TrimSpace(chi.URLParam(r, "avatar_id"))
+	if avatarID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "avatar_id is required",
+			Details: "path param avatar_id is required",
+		})
+		return
+	}
+
+	if _, err := uuid.Parse(avatarID); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "invalid avatar_id",
+			Details: "avatar_id must be a valid UUID",
+		})
+		return
+	}
+
+	size := strings.TrimSpace(r.URL.Query().Get("size"))
+	if size != "" && size != "original" && size != "100x100" && size != "300x300" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "invalid size",
+			Details: "allowed values: original, 100x100, 300x300",
+		})
+		return
+	}
+
+	result, err := h.avatarService.GetAvatarByID(avatarID, size)
+	if err != nil {
+		if errors.Is(err, repository.ErrAvatarNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Error: "avatar not found",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error:   "failed to get avatar",
+			Details: err.Error(),
+		})
+		return
+	}
+	defer result.Reader.Close()
+
+	w.Header().Set("Content-Type", result.MimeType)
+	w.Header().Set("Content-Length", int64ToString(result.SizeBytes))
+	w.Header().Set("Cache-Control", "max-age=86400")
+	w.WriteHeader(http.StatusOK)
+
+	io.Copy(w, result.Reader)
+}
+
+func (h *Handler) GetUserAvatar(w http.ResponseWriter, r *http.Request) {
+	userID := strings.TrimSpace(chi.URLParam(r, "user_id"))
+	if userID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "user_id is required",
+			Details: "path param user_id is required",
+		})
+		return
+	}
+
+	result, err := h.avatarService.GetUserAvatar(userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrAvatarNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Error: "avatar not found",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error:   "failed to get user avatar",
+			Details: err.Error(),
+		})
+		return
+	}
+	defer result.Reader.Close()
+
+	w.Header().Set("Content-Type", result.MimeType)
+	w.Header().Set("Content-Length", int64ToString(result.SizeBytes))
+	w.Header().Set("Cache-Control", "max-age=86400")
+	w.WriteHeader(http.StatusOK)
+
+	io.Copy(w, result.Reader)
+}
+
+func (h *Handler) GetUserAvatars(w http.ResponseWriter, r *http.Request) {
+	userID := strings.TrimSpace(chi.URLParam(r, "user_id"))
+	if userID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "user_id is required",
+			Details: "path param user_id is required",
+		})
+		return
+	}
+
+	result, err := h.avatarService.GetListUserAvatar(userID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error:   "failed to get user avatars",
+			Details: err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// установка текущей главной аватарки
+func (h *Handler) UpdateCurrentAvatar(w http.ResponseWriter, r *http.Request) {
+	avatarID := strings.TrimSpace(chi.URLParam(r, "avatar_id"))
+	if avatarID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "avatar_id is required",
+			Details: "path param avatar_id is required",
+		})
+		return
+	}
+
+	if _, err := uuid.Parse(avatarID); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "invalid avatar_id",
+			Details: "avatar_id must be a valid UUID",
+		})
+		return
+	}
+
+	userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
+	if userID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   constErr.ErrXUserID.Error(),
+			Details: "X-User-ID header is required",
+		})
+		return
+	}
+
+	if err := h.avatarService.UpdateCurrentAvatar(userID, avatarID); err != nil {
+		if errors.Is(err, repository.ErrAvatarNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Error: "avatar not found",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error:   "failed to update current avatar",
+			Details: err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message":   "current avatar updated successfully",
+		"avatar_id": avatarID,
+		"user_id":   userID,
+	})
+}
+
+// удалить главную аватарку
+func (h *Handler) DeleteCurrentAvatar(w http.ResponseWriter, r *http.Request) {}
+func (h *Handler) DeleteAvatar(w http.ResponseWriter, r *http.Request)        {}
+func (h *Handler) DeleteUserAvatar(w http.ResponseWriter, r *http.Request)    {}
+
+func int64ToString(v int64) string {
+	return strconv.FormatInt(v, 10)
+}
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
