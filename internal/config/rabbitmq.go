@@ -33,7 +33,7 @@ func RabbitMQInit(cfg RabbitMQConfig) error {
 		// Соединение уже успело открыться, поэтому его надо закрыть.
 		// Ошибку от Close здесь специально не обрабатываем,
 		// потому что основная причина падения уже известна — Channel() не создался.
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("rabbitmq channel error: %w", err)
 	}
 
@@ -51,8 +51,8 @@ func RabbitMQInit(cfg RabbitMQConfig) error {
 	)
 	if err != nil {
 		// Если exchange создать не удалось, закрываем уже открытые ресурсы.
-		ch.Close()
-		conn.Close()
+		_ = ch.Close()
+		_ = conn.Close()
 		return fmt.Errorf("rabbitmq exchange declare error: %w", err)
 	}
 
@@ -66,8 +66,8 @@ func RabbitMQInit(cfg RabbitMQConfig) error {
 		nil,             // без доп. параметров
 	)
 	if err != nil {
-		ch.Close()
-		conn.Close()
+		_ = ch.Close()
+		_ = conn.Close()
 		return fmt.Errorf("rabbitmq upload queue declare error: %w", err)
 	}
 
@@ -81,8 +81,8 @@ func RabbitMQInit(cfg RabbitMQConfig) error {
 		nil,
 	)
 	if err != nil {
-		ch.Close()
-		conn.Close()
+		_ = ch.Close()
+		_ = conn.Close()
 		return fmt.Errorf("rabbitmq delete queue declare error: %w", err)
 	}
 
@@ -97,8 +97,8 @@ func RabbitMQInit(cfg RabbitMQConfig) error {
 		nil,                  // аргументы не нужны
 	)
 	if err != nil {
-		ch.Close()
-		conn.Close()
+		_ = ch.Close()
+		_ = conn.Close()
 		return fmt.Errorf("rabbitmq upload queue bind error: %w", err)
 	}
 
@@ -111,8 +111,8 @@ func RabbitMQInit(cfg RabbitMQConfig) error {
 		nil,
 	)
 	if err != nil {
-		ch.Close()
-		conn.Close()
+		_ = ch.Close()
+		_ = conn.Close()
 		return fmt.Errorf("rabbitmq delete queue bind error: %w", err)
 	}
 
@@ -137,7 +137,7 @@ func GetRabbitChannel() *amqp.Channel {
 // Корректное закрытие ресурсов при завершении приложения.
 func CloseRabbitMQ() error {
 	if rabbitCh != nil {
-		rabbitCh.Close()
+		_ = rabbitCh.Close()
 	}
 	if rabbitConn != nil {
 		return rabbitConn.Close()

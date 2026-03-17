@@ -5,10 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type AvatarRepository struct {
@@ -262,7 +259,9 @@ func (r *AvatarRepository) GetListUserAvatar(ctx context.Context, userID string)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	avatars := make([]Avatar, 0)
 	for rows.Next() {
@@ -300,8 +299,9 @@ func (r *AvatarRepository) SetCurrentAvatar(ctx context.Context, userID, avatarI
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-
+	defer func() {
+		_ = tx.Rollback()
+	}()
 	// Проверяем, что такая аватарка вообще есть у этого пользователя и не удалена
 	const checkQuery = `
 		SELECT 1
@@ -359,51 +359,6 @@ func (r *AvatarRepository) SetCurrentAvatar(ctx context.Context, userID, avatarI
 	}
 
 	return tx.Commit()
-}
-
-func (r *AvatarRepository) InsertProcessMessage(ctx context.Context, msg ProcessMessage) error {
-	const setQuery = `
-		INSERT INTO processed_messages 
-        (message_id, consumer_name, event_type, entity_id, processed_at) 
-        VALUES ($1, $2, $3, $4, $5)
-	`
-	// Генерируем message_id и ддату вставки
-	if msg.MessageID == "" {
-		msg.MessageID = uuid.New().String()
-	}
-	if msg.ProcessedAt.IsZero() {
-		msg.ProcessedAt = time.Now()
-	}
-
-	_, err := r.db.ExecContext(ctx, setQuery,
-		msg.MessageID,
-		msg.ConsumerName,
-		msg.EventType,
-		msg.EntityID,
-		msg.ProcessedAt,
-	)
-	if err != nil {
-		if strings.Contains(err.Error(), "unique_constraint") ||
-			strings.Contains(err.Error(), "unique_violation") ||
-			strings.Contains(err.Error(), "duplicate key") {
-			return ErrDuplicateKey
-		}
-
-		return err
-	}
-
-	return nil
-}
-
-func (r *AvatarRepository) DeleteProcessMessage(ctx context.Context, consumerName, eventType, entityID string) error {
-	query := `
-        DELETE FROM processed_messages 
-        WHERE consumer_name = $1 
-          AND event_type = $2 
-          AND entity_id = $3
-    `
-	_, err := r.db.ExecContext(ctx, query, consumerName, eventType, entityID)
-	return err
 }
 
 func (r *AvatarRepository) DeleteCurrentUserAvatar(ctx context.Context, userID string) error {

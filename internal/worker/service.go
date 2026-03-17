@@ -89,10 +89,6 @@ func (s *Service) HandleDelete(ctx context.Context, event AvatarDeleteEvent) err
 		return fmt.Errorf("soft delete avatar in db: %w", err)
 	}
 
-	if err := s.avatarRepo.DeleteProcessMessage(ctx, "AvatarDeletionConsumer", "avatar.deleted", avatar.ID); err != nil {
-		s.log.Errorf("failed to delete process message for avatar_id=%s: %v", avatar.ID, err)
-	}
-
 	s.log.Infof("handle delete finished successfully: avatar_id=%s", avatar.ID)
 	return nil
 }
@@ -102,7 +98,9 @@ func (s *Service) processAvatar(ctx context.Context, avatar *repository.Avatar) 
 	if err != nil {
 		return fmt.Errorf("download original from minio: %w", err)
 	}
-	defer downloaded.Reader.Close()
+	defer func() {
+		_ = downloaded.Reader.Close()
+	}()
 
 	originalBytes, err := io.ReadAll(downloaded.Reader)
 	if err != nil {

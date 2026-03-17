@@ -14,7 +14,7 @@ import (
 var minioClient *minio.Client
 
 func MinIOAWSInit(cfg S3Config) error {
-	customLog := logger.NewHTTPLogger().Logger.Sugar()
+	customLog := logger.NewHTTPLogger().Sugar()
 
 	client, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),

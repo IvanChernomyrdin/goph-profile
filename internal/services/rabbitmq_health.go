@@ -27,7 +27,9 @@ func (s *RabbitMQHealthService) Check(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer ch.Close()
+	defer func() {
+		_ = ch.Close()
+	}()
 
 	return nil
 }

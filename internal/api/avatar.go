@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime/multipart"
 	"strconv"
 	"strings"
 
@@ -24,6 +25,13 @@ type errorResponse struct {
 	MaxSize int64  `json:"max_size,omitempty"`
 }
 
+var allowedAvatarMIMETypes = map[string]struct{}{
+	"image/jpeg": {},
+	"image/png":  {},
+	"image/webp": {},
+}
+
+// UploadAvatar загружает аватар пользователя.
 func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	// Получаем userID из обязательного заголовка.
 	userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
@@ -65,7 +73,9 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	// Простейшая валидация имени файла
 	if strings.TrimSpace(header.Filename) == "" {
@@ -76,11 +86,39 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// проверка размера из multipart header
+	if header.Size <= 0 {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "invalid file",
+			Details: "file name is empty",
+		})
+		return
+	}
+
+	// проверка размера файла
+	if header.Size > maxAvatarSize {
+		writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{
+			Error:   "File too large",
+			MaxSize: maxAvatarSize,
+		})
+		return
+	}
+
+	// Определяем MIME-тип по magic bytes, а не по Content-Type от клиента
+	detectedContentType, err := detectAndValidateAvatarMime(file)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "Unsupported file type",
+			Details: err.Error(),
+		})
+		return
+	}
+
 	// Передаём всё в сервисный слой.
 	result, err := h.avatarService.UploadAvatar(UploadAvatarInput{
 		UserID:      userID,
 		FileName:    header.Filename,
-		ContentType: header.Header.Get("Content-Type"),
+		ContentType: detectedContentType,
 		Size:        header.Size,
 		File:        file,
 	})
@@ -95,6 +133,7 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, result)
 }
 
+// GetAvatar получение аватарки
 func (h *Handler) GetAvatar(w http.ResponseWriter, r *http.Request) {
 	avatarID := strings.TrimSpace(chi.URLParam(r, "avatar_id"))
 	if avatarID == "" {
@@ -137,16 +176,21 @@ func (h *Handler) GetAvatar(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer result.Reader.Close()
+	defer func() {
+		_ = result.Reader.Close()
+	}()
 
 	w.Header().Set("Content-Type", result.MimeType)
 	w.Header().Set("Content-Length", int64ToString(result.SizeBytes))
 	w.Header().Set("Cache-Control", "max-age=86400")
 	w.WriteHeader(http.StatusOK)
 
-	io.Copy(w, result.Reader)
+	if _, err := io.Copy(w, result.Reader); err != nil {
+		return
+	}
 }
 
+// GetUserAvatar получение текущей аватарки пользователя
 func (h *Handler) GetUserAvatar(w http.ResponseWriter, r *http.Request) {
 	userID := strings.TrimSpace(chi.URLParam(r, "user_id"))
 	if userID == "" {
@@ -172,16 +216,21 @@ func (h *Handler) GetUserAvatar(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer result.Reader.Close()
+	defer func() {
+		_ = result.Reader.Close()
+	}()
 
 	w.Header().Set("Content-Type", result.MimeType)
 	w.Header().Set("Content-Length", int64ToString(result.SizeBytes))
 	w.Header().Set("Cache-Control", "max-age=86400")
 	w.WriteHeader(http.StatusOK)
 
-	io.Copy(w, result.Reader)
+	if _, err := io.Copy(w, result.Reader); err != nil {
+		return
+	}
 }
 
+// GetUserAvatars получение всех аватарок пользователя
 func (h *Handler) GetUserAvatars(w http.ResponseWriter, r *http.Request) {
 	userID := strings.TrimSpace(chi.URLParam(r, "user_id"))
 	if userID == "" {
@@ -204,6 +253,7 @@ func (h *Handler) GetUserAvatars(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// UpdateCurrentAvatar выставление текущей аватарки пользователя
 func (h *Handler) UpdateCurrentAvatar(w http.ResponseWriter, r *http.Request) {
 	avatarID := strings.TrimSpace(chi.URLParam(r, "avatar_id"))
 	if avatarID == "" {
@@ -253,6 +303,7 @@ func (h *Handler) UpdateCurrentAvatar(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DeleteUserCurrentAvatar удаление аватарки из статуса текущей
 func (h *Handler) DeleteUserCurrentAvatar(w http.ResponseWriter, r *http.Request) {
 	userID := strings.TrimSpace(chi.URLParam(r, "user_id"))
 	if userID == "" {
@@ -277,6 +328,7 @@ func (h *Handler) DeleteUserCurrentAvatar(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// DeleteAvatarByID удаление аватарки по ID
 func (h *Handler) DeleteAvatarByID(w http.ResponseWriter, r *http.Request) {
 	avatarID := strings.TrimSpace(chi.URLParam(r, "avatar_id"))
 	if avatarID == "" {
@@ -323,12 +375,54 @@ func (h *Handler) DeleteAvatarByID(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// int64ToString вспомогательная функция перевода числа64 в строку
 func int64ToString(v int64) string {
 	return strconv.FormatInt(v, 10)
 }
 
+// writeJSON кусок кода вынесен в общую реализацию, функция возвращает ответ json
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(payload)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+// detectAndValidateAvatarMime:
+// 1. читает первые байты файла
+// 2. определяет MIME по magic bytes
+// 3. проверяет whitelist допустимых типов
+// 4. возвращает указатель чтения в начало файла
+func detectAndValidateAvatarMime(file multipart.File) (string, error) {
+	// multipart.File обычно поддерживает Seek, но проверим явно
+	seeker, ok := file.(io.Seeker)
+	if !ok {
+		return "", errors.New("uploaded file is not seekable")
+	}
+
+	// Читаем первые 512 байт — этого достаточно для http.DetectContentType
+	buf := make([]byte, 512)
+	n, err := file.Read(buf)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", errors.New("failed to read file header")
+	}
+	if n == 0 {
+		return "", errors.New("file is empty")
+	}
+
+	detectedContentType := http.DetectContentType(buf[:n])
+
+	if _, allowed := allowedAvatarMIMETypes[detectedContentType]; !allowed {
+		return "", errors.New("allowed types: image/jpeg, image/png, image/webp")
+	}
+
+	// Возвращаем указатель обратно в начало,
+	// чтобы сервис смог прочитать файл целиком
+	if _, err := seeker.Seek(0, io.SeekStart); err != nil {
+		return "", errors.New("failed to reset file pointer")
+	}
+
+	return detectedContentType, nil
 }

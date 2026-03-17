@@ -38,7 +38,7 @@ var DB *sql.DB
 // Миграции запускаются из каталога file://migrations/postgres.
 // Если миграции уже применены, ошибка migrate.ErrNoChange не считается ошибкой.
 func PostgresInit(databaseDSN string) error {
-	customLog := logger.NewHTTPLogger().Logger.Sugar()
+	customLog := logger.NewHTTPLogger().Sugar()
 
 	var err error
 	DB, err = sql.Open("pgx", databaseDSN)

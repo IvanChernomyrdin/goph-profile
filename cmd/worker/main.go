@@ -15,7 +15,7 @@ import (
 
 func main() {
 	// инициализировали логгер
-	sugar := logger.NewHTTPLogger().Logger.Sugar()
+	sugar := logger.NewHTTPLogger().Sugar()
 
 	// подключаем переменные окружения для воркера
 	cfg, err := config.Load("./configs/server.yaml")

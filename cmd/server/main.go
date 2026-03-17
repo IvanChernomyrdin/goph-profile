@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// инициализировали логер
-	sugar := logger.NewHTTPLogger().Logger.Sugar()
+	sugar := logger.NewHTTPLogger().Sugar()
 	// httpLogger := logger.NewHTTPLogger()
 
 	// подключаем переменные окружения для сервака
