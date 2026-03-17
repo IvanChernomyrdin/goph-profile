@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"goph-profile-avatars/internal/api"
+	Err "goph-profile-avatars/internal/errors"
 	"goph-profile-avatars/internal/repository"
 
 	"github.com/google/uuid"
@@ -29,6 +31,12 @@ type avatarRepo interface {
 	GetListUserAvatar(ctx context.Context, userID string) ([]repository.Avatar, error)
 	// выставление главной аватарки пользователя
 	SetCurrentAvatar(ctx context.Context, userID, avatarID string) error
+	// вставка в таблицу выполнения процесса для асинхронщины
+	InsertProcessMessage(ctx context.Context, pm repository.ProcessMessage) error
+	// откат вставки в таблицу процесса
+	DeleteProcessMessage(ctx context.Context, consumerName, eventType, entityID string) error
+	// удаление статуса текущей аватарки у пользователя
+	DeleteCurrentUserAvatar(ctx context.Context, userID string) error
 }
 
 type objectStorage interface {
@@ -38,6 +46,7 @@ type objectStorage interface {
 
 type eventPublisher interface {
 	PublishUploadEvent(ctx context.Context, event AvatarUploadEvent) error
+	PublishDeleteEvent(ctx context.Context, event AvatarDeleteEvent) error
 }
 
 type AvatarService struct {
@@ -296,4 +305,47 @@ func (s *AvatarService) UpdateCurrentAvatar(userID, avatarID string) error {
 	}
 
 	return nil
+}
+
+// отправка сообщения в брокер на удаление
+func (s *AvatarService) DeleteAvatarByID(avatarID, userID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := s.repo.GetAvatarByID(ctx, avatarID)
+	if err != nil {
+		return fmt.Errorf("get avatar by id: %w", err)
+	}
+
+	//записываем в таблицу если нету или возвращаем ответ что уже удаление происходит
+	err = s.repo.InsertProcessMessage(ctx, repository.ProcessMessage{
+		ConsumerName: "AvatarDeletionConsumer",
+		EventType:    "avatar.deleted",
+		EntityID:     avatarID,
+	})
+	if err != nil {
+		if errors.Is(err, repository.ErrDuplicateKey) { // или конкретная ошибка БД
+			return Err.ErrAvatarDeletionAlreadyQueued
+		}
+		return fmt.Errorf("failed to insert process message: %w", err)
+	}
+	// после записи процесса в бд отправляем в брокер сообщений
+	err = s.publisher.PublishDeleteEvent(ctx, AvatarDeleteEvent{
+		AvatarID: res.ID,
+		UserID:   res.UserID,
+		S3Key:    res.S3Key,
+	})
+	// если не удачно отправлили в rebbitmq тогда откатываем запись в бд
+	if err != nil {
+		_ = s.repo.DeleteProcessMessage(ctx, "AvatarDeletionConsumer", "avatar.deleted", avatarID)
+		return fmt.Errorf("publish delete event: %w", err)
+	}
+	return nil
+}
+
+func (s *AvatarService) DeleteCurrentUserAvatar(userID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	return s.repo.DeleteCurrentUserAvatar(ctx, userID)
 }

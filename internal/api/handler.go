@@ -6,6 +6,8 @@ type AvatarService interface {
 	GetUserAvatar(userID string) (*GetAvatarResult, error)
 	GetListUserAvatar(userID string) ([]AvatarItem, error)
 	UpdateCurrentAvatar(userID, avatarID string) error
+	DeleteAvatarByID(avatarID, userID string) error
+	DeleteCurrentUserAvatar(userID string) error
 }
 
 type Handler struct {

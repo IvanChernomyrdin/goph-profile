@@ -48,7 +48,6 @@ func (s *Service) HandleUpload(ctx context.Context, event AvatarUploadEvent) err
 		return fmt.Errorf("get avatar by id: %w", err)
 	}
 
-	// Идемпотентность: если уже обработано — просто выходим.
 	if avatar.ProcessingStatus == "completed" {
 		s.log.Infof("avatar already completed: avatar_id=%s", avatar.ID)
 		return nil
@@ -67,6 +66,34 @@ func (s *Service) HandleUpload(ctx context.Context, event AvatarUploadEvent) err
 	}
 
 	s.log.Infof("handle upload finished successfully: avatar_id=%s", avatar.ID)
+	return nil
+}
+
+func (s *Service) HandleDelete(ctx context.Context, event AvatarDeleteEvent) error {
+	s.log.Infof("handle delete started: avatar_id=%s", event.AvatarID)
+
+	avatar, err := s.avatarRepo.GetAvatarByID(ctx, event.AvatarID)
+	if err != nil {
+		if err == repository.ErrAvatarNotFound {
+			s.log.Infof("avatar already deleted or not found: avatar_id=%s", event.AvatarID)
+			return nil
+		}
+		return fmt.Errorf("get avatar by id: %w", err)
+	}
+
+	if err := s.deleteAvatarFiles(ctx, avatar); err != nil {
+		return fmt.Errorf("delete avatar files: %w", err)
+	}
+
+	if err := s.avatarRepo.SoftDeleteAvatar(ctx, avatar.ID); err != nil {
+		return fmt.Errorf("soft delete avatar in db: %w", err)
+	}
+
+	if err := s.avatarRepo.DeleteProcessMessage(ctx, "AvatarDeletionConsumer", "avatar.deleted", avatar.ID); err != nil {
+		s.log.Errorf("failed to delete process message for avatar_id=%s: %v", avatar.ID, err)
+	}
+
+	s.log.Infof("handle delete finished successfully: avatar_id=%s", avatar.ID)
 	return nil
 }
 
@@ -137,6 +164,35 @@ func (s *Service) processAvatar(ctx context.Context, avatar *repository.Avatar) 
 
 	if err := s.avatarRepo.CompleteProcessing(ctx, avatar.ID, thumbnailKeysJSON); err != nil {
 		return fmt.Errorf("complete processing: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) deleteAvatarFiles(ctx context.Context, avatar *repository.Avatar) error {
+	if avatar.S3Key != "" {
+		if err := s.storage.Delete(ctx, avatar.S3Key); err != nil {
+			return fmt.Errorf("delete original file: %w", err)
+		}
+	}
+
+	if len(avatar.ThumbnailS3Keys) == 0 {
+		return nil
+	}
+
+	var thumbnailKeys map[string]string
+	if err := json.Unmarshal(avatar.ThumbnailS3Keys, &thumbnailKeys); err != nil {
+		return fmt.Errorf("unmarshal thumbnail keys: %w", err)
+	}
+
+	for size, key := range thumbnailKeys {
+		if key == "" {
+			continue
+		}
+
+		if err := s.storage.Delete(ctx, key); err != nil {
+			return fmt.Errorf("delete thumbnail %s: %w", size, err)
+		}
 	}
 
 	return nil

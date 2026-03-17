@@ -204,7 +204,6 @@ func (h *Handler) GetUserAvatars(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-// установка текущей главной аватарки
 func (h *Handler) UpdateCurrentAvatar(w http.ResponseWriter, r *http.Request) {
 	avatarID := strings.TrimSpace(chi.URLParam(r, "avatar_id"))
 	if avatarID == "" {
@@ -254,10 +253,75 @@ func (h *Handler) UpdateCurrentAvatar(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// удалить главную аватарку
-func (h *Handler) DeleteCurrentAvatar(w http.ResponseWriter, r *http.Request) {}
-func (h *Handler) DeleteAvatar(w http.ResponseWriter, r *http.Request)        {}
-func (h *Handler) DeleteUserAvatar(w http.ResponseWriter, r *http.Request)    {}
+func (h *Handler) DeleteUserCurrentAvatar(w http.ResponseWriter, r *http.Request) {
+	userID := strings.TrimSpace(chi.URLParam(r, "user_id"))
+	if userID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "user_id is required",
+			Details: "path param user_id is required",
+		})
+		return
+	}
+
+	if err := h.avatarService.DeleteCurrentUserAvatar(userID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error:   "error deleting current user avatar",
+			Details: err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "success",
+		"message": "Current avatar status removed successfully.",
+	})
+}
+
+func (h *Handler) DeleteAvatarByID(w http.ResponseWriter, r *http.Request) {
+	avatarID := strings.TrimSpace(chi.URLParam(r, "avatar_id"))
+	if avatarID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "avatar_id is required",
+			Details: "path param avatar_id is required",
+		})
+		return
+	}
+	userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
+	if userID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   constErr.ErrXUserID.Error(),
+			Details: "X-User-ID header is required",
+		})
+		return
+	}
+	if _, err := uuid.Parse(avatarID); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:   "invalid avatar_id",
+			Details: "avatar_id must be a valid UUID",
+		})
+		return
+	}
+	// вызываем функцию сервисного слоя которая отправит в rabbitmq сообщение о запросе на удаление
+	err := h.avatarService.DeleteAvatarByID(avatarID, userID)
+	if err != nil {
+		if errors.Is(err, constErr.ErrAvatarDeletionAlreadyQueued) {
+			writeJSON(w, http.StatusAccepted, map[string]string{
+				"status":  "already_queued",
+				"message": "Avatar is already in deletion queue",
+			})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error:   err.Error(),
+			Details: "error sending to rabbitMQ",
+		})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{
+		"status":  "queued",
+		"message": "Avatar has been added to deletion queue",
+	})
+}
 
 func int64ToString(v int64) string {
 	return strconv.FormatInt(v, 10)

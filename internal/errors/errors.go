@@ -7,4 +7,6 @@ var (
 	ErrXUserID = errors.New("missing X-User-ID header")
 	// Невалидный формат файла
 	ErrInvalidMime = errors.New("invalid file format")
+
+	ErrAvatarDeletionAlreadyQueued = errors.New("avatar deletion already queued")
 )

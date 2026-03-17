@@ -728,21 +728,28 @@
         alert(error.message || 'Failed to set current avatar');
       }
     }
-
     async function deleteAvatarById(avatarId, userId) {
       if (!avatarId) {
         alert('Avatar ID is missing');
         return;
       }
 
-      const confirmed = window.confirm(`Delete avatar?`);
+      if (!userId) {
+        alert('User ID is required');
+        return;
+      }
+
+      const confirmed = window.confirm('Delete avatar?');
       if (!confirmed) return;
 
       try {
         await runActionWithOverlay(
           async () => {
             const response = await fetch(`/api/v1/avatars/${encodeURIComponent(avatarId)}`, {
-              method: 'DELETE'
+              method: 'DELETE',
+              headers: {
+                'X-User-ID': userId
+              }
             });
 
             let data = null;
@@ -758,11 +765,17 @@
             return data;
           },
           {
-            loadingTitle: 'Deleting avatar...',
-            loadingMessage: 'Please wait while the avatar is being removed',
-            successTitle: 'Avatar deleted',
-            successMessage: 'Avatar deleted successfully',
-            errorTitle: 'Delete failed'
+            loadingTitle: 'Adding to deletion queue...',
+            loadingMessage: 'Please wait while avatar is being queued for deletion',
+            successTitle: 'Queue updated',
+            successMessage: (data) => {
+              if (data?.status === 'already_queued') {
+                return data?.message || 'Avatar is already in deletion queue';
+              }
+
+              return data?.message || 'Avatar has been added to deletion queue';
+            },
+            errorTitle: 'Failed'
           }
         );
 
@@ -778,14 +791,17 @@
         return;
       }
 
-      const confirmed = window.confirm(`Delete current avatar?`);
+      const confirmed = window.confirm('Delete current avatar?');
       if (!confirmed) return;
 
       try {
         await runActionWithOverlay(
           async () => {
             const response = await fetch(`/api/v1/users/${encodeURIComponent(userId)}/avatar`, {
-              method: 'DELETE'
+              method: 'DELETE',
+              headers: {
+                'X-User-ID': userId
+              }
             });
 
             let data = null;
@@ -801,11 +817,17 @@
             return data;
           },
           {
-            loadingTitle: 'Deleting current avatar...',
-            loadingMessage: 'Please wait while the avatar is being removed',
-            successTitle: 'Avatar deleted',
-            successMessage: 'Current user avatar deleted successfully',
-            errorTitle: 'Delete failed'
+            loadingTitle: 'Adding to deletion queue...',
+            loadingMessage: 'Please wait while avatar is being queued for deletion',
+            successTitle: 'Queue updated',
+            successMessage: (data) => {
+              if (data?.status === 'already_queued') {
+                return data?.message || 'Avatar is already in deletion queue';
+              }
+
+              return data?.message || 'Avatar has been added to deletion queue';
+            },
+            errorTitle: 'Failed'
           }
         );
 

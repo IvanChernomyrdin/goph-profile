@@ -59,6 +59,7 @@ func main() {
 		config.GetRabbitChannel(),
 		cfg.RabbitMQ,
 		avatarWorkerService,
+		avatarWorkerService,
 		sugar,
 	)
 
@@ -66,7 +67,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	sugar.Infof("worker started, queue=%s", cfg.RabbitMQ.QueueUpload)
+	sugar.Infof(
+		"worker started, upload_queue=%s delete_queue=%s",
+		cfg.RabbitMQ.QueueUpload,
+		cfg.RabbitMQ.QueueDelete,
+	)
 
 	if err := consumer.Run(ctx); err != nil {
 		sugar.Fatal(err)

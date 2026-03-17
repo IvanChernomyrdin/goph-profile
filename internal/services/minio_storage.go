@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/minio/minio-go/v7"
@@ -56,4 +57,12 @@ func (s *MinIOStorage) Download(ctx context.Context, key string) (*DownloadResul
 		Size:        info.Size,
 		ContentType: contentType,
 	}, nil
+}
+
+func (s *MinIOStorage) Delete(ctx context.Context, objectKey string) error {
+	err := s.client.RemoveObject(ctx, s.bucket, objectKey, minio.RemoveObjectOptions{})
+	if err != nil {
+		return fmt.Errorf("remove object %s: %w", objectKey, err)
+	}
+	return nil
 }

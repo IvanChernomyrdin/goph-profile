@@ -4,14 +4,21 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type AvatarRepository struct {
 	db *sql.DB
 }
 
-var ErrAvatarNotFound = errors.New("avatar not found")
+var (
+	ErrAvatarNotFound = errors.New("avatar not found")
+	ErrDuplicateKey   = errors.New("duplicate key violation")
+)
 
 type Avatar struct {
 	ID               string
@@ -39,6 +46,14 @@ type CreateAvatarParams struct {
 	ThumbnailS3Keys  []byte
 	UploadStatus     string
 	ProcessingStatus string
+}
+
+type ProcessMessage struct {
+	MessageID    string
+	ConsumerName string
+	EventType    string
+	EntityID     string
+	ProcessedAt  time.Time
 }
 
 func NewAvatarRepository(db *sql.DB) *AvatarRepository {
@@ -344,4 +359,85 @@ func (r *AvatarRepository) SetCurrentAvatar(ctx context.Context, userID, avatarI
 	}
 
 	return tx.Commit()
+}
+
+func (r *AvatarRepository) InsertProcessMessage(ctx context.Context, msg ProcessMessage) error {
+	const setQuery = `
+		INSERT INTO processed_messages 
+        (message_id, consumer_name, event_type, entity_id, processed_at) 
+        VALUES ($1, $2, $3, $4, $5)
+	`
+	// Генерируем message_id и ддату вставки
+	if msg.MessageID == "" {
+		msg.MessageID = uuid.New().String()
+	}
+	if msg.ProcessedAt.IsZero() {
+		msg.ProcessedAt = time.Now()
+	}
+
+	_, err := r.db.ExecContext(ctx, setQuery,
+		msg.MessageID,
+		msg.ConsumerName,
+		msg.EventType,
+		msg.EntityID,
+		msg.ProcessedAt,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "unique_constraint") ||
+			strings.Contains(err.Error(), "unique_violation") ||
+			strings.Contains(err.Error(), "duplicate key") {
+			return ErrDuplicateKey
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+func (r *AvatarRepository) DeleteProcessMessage(ctx context.Context, consumerName, eventType, entityID string) error {
+	query := `
+        DELETE FROM processed_messages 
+        WHERE consumer_name = $1 
+          AND event_type = $2 
+          AND entity_id = $3
+    `
+	_, err := r.db.ExecContext(ctx, query, consumerName, eventType, entityID)
+	return err
+}
+
+func (r *AvatarRepository) DeleteCurrentUserAvatar(ctx context.Context, userID string) error {
+	const query = `
+		UPDATE avatars
+		SET is_current = FALSE
+		WHERE user_id = $1
+		  AND is_current
+		  AND deleted_at IS NULL
+	`
+
+	_, err := r.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("update current avatar: %w", err)
+	}
+
+	return nil
+}
+
+func (r *AvatarRepository) SoftDeleteAvatar(ctx context.Context, avatarID string) error {
+	const query = `
+		UPDATE avatars
+		SET
+			deleted_at = NOW(),
+			is_current = FALSE,
+			updated_at = NOW()
+		WHERE id = $1
+		  AND deleted_at IS NULL
+	`
+
+	_, err := r.db.ExecContext(ctx, query, avatarID)
+	if err != nil {
+		return fmt.Errorf("soft delete avatar: %w", err)
+	}
+
+	return nil
 }

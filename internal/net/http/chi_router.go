@@ -31,9 +31,10 @@ func NewRouter(h *api.Handler) http.Handler {
 		// установка аватарки на главную
 		r.Patch("/avatars/{avatar_id}/current", h.UpdateCurrentAvatar)
 
-		// Удаление аватарки
-		r.Delete("/avatars/{avatar_id}", h.DeleteAvatar)
-		r.Delete("/users/{user_id}/avatar", h.DeleteUserAvatar)
+		// удаление аватарки по ID
+		r.Delete("/avatars/{avatar_id}", h.DeleteAvatarByID)
+		// удаление аватарки пользователя с позиции главной
+		r.Delete("/users/{user_id}/avatar", h.DeleteUserCurrentAvatar)
 	})
 
 	// web отрисовка

@@ -23,25 +23,32 @@ type UploadHandler interface {
 	HandleUpload(ctx context.Context, event AvatarUploadEvent) error
 }
 
+type DeleteHandler interface {
+	HandleDelete(ctx context.Context, event AvatarDeleteEvent) error
+}
+
 // RabbitConsumer слушает очередь RabbitMQ и передаёт сообщения в handler.
 type RabbitConsumer struct {
-	ch      *amqp.Channel
-	cfg     config.RabbitMQConfig
-	handler UploadHandler
-	log     Logger
+	ch            *amqp.Channel
+	cfg           config.RabbitMQConfig
+	uploadHandler UploadHandler
+	deleteHandler DeleteHandler
+	log           Logger
 }
 
 func NewRabbitConsumer(
 	ch *amqp.Channel,
 	cfg config.RabbitMQConfig,
-	handler UploadHandler,
+	uploadHandler UploadHandler,
+	deleteHandler DeleteHandler,
 	log Logger,
 ) *RabbitConsumer {
 	return &RabbitConsumer{
-		ch:      ch,
-		cfg:     cfg,
-		handler: handler,
-		log:     log,
+		ch:            ch,
+		cfg:           cfg,
+		uploadHandler: uploadHandler,
+		deleteHandler: deleteHandler,
+		log:           log,
 	}
 }
 
@@ -50,7 +57,7 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 		return fmt.Errorf("declare rabbitmq infrastructure: %w", err)
 	}
 
-	msgs, err := c.ch.Consume(
+	uploadMsgs, err := c.ch.Consume(
 		c.cfg.QueueUpload,
 		"",
 		false,
@@ -63,7 +70,24 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 		return fmt.Errorf("consume message: %w", err)
 	}
 
-	c.log.Infof("rabbit consumer started, queue=%s", c.cfg.QueueUpload)
+	deleteMsgs, err := c.ch.Consume(
+		c.cfg.QueueDelete,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("consume delete messages: %w", err)
+	}
+
+	c.log.Infof(
+		"rabbit consumer started, upload_queue=%s delete_queue=%s",
+		c.cfg.QueueUpload,
+		c.cfg.QueueDelete,
+	)
 
 	for {
 		select {
@@ -71,22 +95,39 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 			c.log.Info("rabbit consumer stopped by context")
 			return nil
 
-		case msg, ok := <-msgs:
+		case msg, ok := <-uploadMsgs:
 			if !ok {
-				return fmt.Errorf("rabbit consumer channel closed")
+				return fmt.Errorf("upload consumer channel closed")
 			}
 
-			if err := c.handleMessage(ctx, msg); err != nil {
-				c.log.Errorf("handle message error: %v", err)
+			if err := c.handleUploadMessage(ctx, msg); err != nil {
+				c.log.Errorf("handle upload message error: %v", err)
 
 				if nackErr := msg.Nack(false, false); nackErr != nil {
-					c.log.Errorf("message nack error: %v", nackErr)
+					c.log.Errorf("message upload nack error: %v", nackErr)
 				}
 				continue
 			}
 
 			if err := msg.Ack(false); err != nil {
-				c.log.Errorf("message ack error: %v", err)
+				c.log.Errorf("message upload ack error: %v", err)
+			}
+		case msg, ok := <-deleteMsgs:
+			if !ok {
+				return fmt.Errorf("delete consumer channel closed")
+			}
+
+			if err := c.handleDeleteMessage(ctx, msg); err != nil {
+				c.log.Errorf("handle delete message error: %v", err)
+
+				if nackErr := msg.Nack(false, false); nackErr != nil {
+					c.log.Errorf("message delete nack error: %v", nackErr)
+				}
+				continue
+			}
+
+			if err := msg.Ack(false); err != nil {
+				c.log.Errorf("message delete ack error: %v", err)
 			}
 		}
 	}
@@ -117,6 +158,18 @@ func (c *RabbitConsumer) declareInfrastructure() error {
 		return fmt.Errorf("declare upload queue: %w", err)
 	}
 
+	_, err = c.ch.QueueDeclare(
+		c.cfg.QueueDelete,
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("declare delete queue: %w", err)
+	}
+
 	if err := c.ch.QueueBind(
 		c.cfg.QueueUpload,
 		c.cfg.UploadRoutingKey,
@@ -127,6 +180,16 @@ func (c *RabbitConsumer) declareInfrastructure() error {
 		return fmt.Errorf("bind upload queue: %w", err)
 	}
 
+	if err := c.ch.QueueBind(
+		c.cfg.QueueDelete,
+		c.cfg.DeleteRoutingKey,
+		c.cfg.Exchange,
+		false,
+		nil,
+	); err != nil {
+		return fmt.Errorf("bind delete queue: %w", err)
+	}
+
 	if err := c.ch.Qos(1, 0, false); err != nil {
 		return fmt.Errorf("set qos: %w", err)
 	}
@@ -134,7 +197,7 @@ func (c *RabbitConsumer) declareInfrastructure() error {
 	return nil
 }
 
-func (c *RabbitConsumer) handleMessage(ctx context.Context, msg amqp.Delivery) error {
+func (c *RabbitConsumer) handleUploadMessage(ctx context.Context, msg amqp.Delivery) error {
 	var event AvatarUploadEvent
 
 	if err := json.Unmarshal(msg.Body, &event); err != nil {
@@ -158,10 +221,41 @@ func (c *RabbitConsumer) handleMessage(ctx context.Context, msg amqp.Delivery) e
 		event.S3Key,
 	)
 
-	if err := c.handler.HandleUpload(ctx, event); err != nil {
+	if err := c.uploadHandler.HandleUpload(ctx, event); err != nil {
 		return fmt.Errorf("handle upload event: %w", err)
 	}
 
 	c.log.Infof("upload event processed successfully: avatar_id=%s", event.AvatarID)
+	return nil
+}
+func (c *RabbitConsumer) handleDeleteMessage(ctx context.Context, msg amqp.Delivery) error {
+	var event AvatarDeleteEvent
+
+	if err := json.Unmarshal(msg.Body, &event); err != nil {
+		return fmt.Errorf("unmarshal delete event: %w", err)
+	}
+
+	if event.AvatarID == "" {
+		return fmt.Errorf("empty avatar_id")
+	}
+	if event.S3Key == "" {
+		return fmt.Errorf("empty s3_key")
+	}
+	if event.UserID == "" {
+		return fmt.Errorf("empty user_id")
+	}
+
+	c.log.Infof(
+		"received delete event: avatar_id=%s user_id=%s s3_key=%s",
+		event.AvatarID,
+		event.UserID,
+		event.S3Key,
+	)
+
+	if err := c.deleteHandler.HandleDelete(ctx, event); err != nil {
+		return fmt.Errorf("handle delete event: %w", err)
+	}
+
+	c.log.Infof("delete event processed successfully: avatar_id=%s", event.AvatarID)
 	return nil
 }

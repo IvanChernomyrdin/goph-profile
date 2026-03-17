@@ -55,6 +55,7 @@ func main() {
 		config.GetRabbitChannel(),
 		cfg.RabbitMQ.Exchange,
 		cfg.RabbitMQ.UploadRoutingKey,
+		cfg.RabbitMQ.DeleteRoutingKey,
 	)
 
 	// запускаем chi роутер
