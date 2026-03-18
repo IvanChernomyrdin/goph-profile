@@ -76,7 +76,7 @@ func main() {
 		avatarService,
 	)
 
-	router := routerhttp.NewRouter(handler)
+	router := routerhttp.NewRouter(handler, cfg.RateLimit.RequestPerMinute)
 	// формирует строку подключения >> хост:порт
 	addr := cfg.App.Host + ":" + cfg.App.Port
 	sugar.Infof("server started on %s", addr)

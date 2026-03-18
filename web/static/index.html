@@ -312,6 +312,14 @@
       pageShell.classList.add('scale-[0.99]', 'blur-[1px]', 'opacity-80');
     }
 
+    function getApiErrorMessage(response, data, fallbackText) {
+      if (response && response.status === 429) {
+        return 'Too many requests. Rate limit exceeded. Please try again in a minute.';
+      }
+
+      return data?.details || data?.error || fallbackText;
+    }
+
     function showOverlayResult(type, title, message, autoHide = true) {
       overlayLoadingBlock.classList.add('hidden');
       overlayResultBlock.classList.remove('hidden');
@@ -438,7 +446,10 @@
               loadGallerySilently(userId);
               resolve({ status: xhr.status, statusText: xhr.statusText, data: parsedData });
             } else {
-              const details = parsedData?.details || parsedData?.error || `Server returned ${xhr.status} ${xhr.statusText}`;
+              const details = xhr.status === 429
+                ? 'Too many requests. Rate limit exceeded. Please try again in a minute.'
+                : (parsedData?.details || parsedData?.error || `Server returned ${xhr.status} ${xhr.statusText}`);
+
               reject(new Error(details));
             }
           };
@@ -499,7 +510,11 @@
 
       if (!response.ok) {
         throw new Error(
-          data?.details || data?.error || `Failed to load gallery: ${response.status} ${response.statusText}`
+          getApiErrorMessage(
+            response,
+            data,
+            `Failed to load gallery: ${response.status} ${response.statusText}`
+          )
         );
       }
 
@@ -708,7 +723,11 @@
             } catch (_) { }
 
             if (!response.ok) {
-              const details = data?.details || data?.error || `${response.status} ${response.statusText}`;
+              const details = getApiErrorMessage(
+                response,
+                data,
+                `${response.status} ${response.statusText}`
+              );
               throw new Error(details);
             }
 
@@ -758,7 +777,11 @@
             } catch (_) { }
 
             if (!response.ok) {
-              const details = data?.details || data?.error || `${response.status} ${response.statusText}`;
+              const details = getApiErrorMessage(
+                response,
+                data,
+                `${response.status} ${response.statusText}`
+              );
               throw new Error(details);
             }
 
@@ -810,7 +833,11 @@
             } catch (_) { }
 
             if (!response.ok) {
-              const details = data?.details || data?.error || `${response.status} ${response.statusText}`;
+              const details = getApiErrorMessage(
+                response,
+                data,
+                `${response.status} ${response.statusText}`
+              );
               throw new Error(details);
             }
 

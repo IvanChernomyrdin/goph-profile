@@ -9,10 +9,13 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func NewRouter(h *api.Handler) http.Handler {
+func NewRouter(h *api.Handler, rateLimit int) http.Handler {
 	r := chi.NewRouter()
 	// логирование всех запросов
 	r.Use(middleware.LoggerMiddleware())
+
+	//RateLimit 10 rps
+	r.Use(middleware.RateLimitMiddleware(rateLimit))
 
 	// Проверка работоспособности
 	r.Get("/health", h.Health)

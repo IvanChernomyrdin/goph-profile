@@ -33,7 +33,10 @@
     docker compose down -v
     docker compose up --build
     )
-2.
+
+Сделано для 8 коммита:
+1. сделан ratelimit на 10 запросов в минуту для наглядности
+
 
 Нужно ещё сделать:
 3. RateLimit 200 запросов в минуту

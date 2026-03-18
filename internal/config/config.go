@@ -7,10 +7,11 @@ import (
 )
 
 type Config struct {
-	App      AppConfig      `yaml:"app"`
-	Postgres PostgresConfig `yaml:"postgres"`
-	S3       S3Config       `yaml:"s3"`
-	RabbitMQ RabbitMQConfig `yaml:"rabbitmq"`
+	App       AppConfig      `yaml:"app"`
+	Postgres  PostgresConfig `yaml:"postgres"`
+	S3        S3Config       `yaml:"s3"`
+	RabbitMQ  RabbitMQConfig `yaml:"rabbitmq"`
+	RateLimit RateLimit      `yaml:"rate_limit"`
 }
 
 type AppConfig struct {
@@ -41,6 +42,10 @@ type RabbitMQConfig struct {
 	DeleteRoutingKey string `yaml:"delete_routing_key"`
 	QueueUpload      string `yaml:"queue_upload"`
 	QueueDelete      string `yaml:"queue_delete"`
+}
+
+type RateLimit struct {
+	RequestPerMinute int `yaml:"requests_per_minute"`
 }
 
 func Load(path string) (*Config, error) {
