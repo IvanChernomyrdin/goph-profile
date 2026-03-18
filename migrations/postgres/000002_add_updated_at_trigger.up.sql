@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION set_updated_at()
+CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS TRIGGER
 AS $$
 BEGIN
@@ -7,9 +7,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_avatars_set_updated_at ON avatars;
+DROP TRIGGER IF EXISTS trg_avatars_set_updated_at ON public.avatars;
 
 CREATE TRIGGER trg_avatars_set_updated_at
-BEFORE UPDATE ON avatars
+BEFORE UPDATE ON public.avatars
 FOR EACH ROW
-EXECUTE FUNCTION set_updated_at();
+EXECUTE FUNCTION public.set_updated_at();

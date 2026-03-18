@@ -18,7 +18,12 @@ func main() {
 	sugar := logger.NewHTTPLogger().Sugar()
 
 	// подключаем переменные окружения для воркера
-	cfg, err := config.Load("./configs/server.yaml")
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "./configs/server.yaml"
+	}
+
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		sugar.Fatal(err)
 	}

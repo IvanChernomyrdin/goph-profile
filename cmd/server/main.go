@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 
 	apis "goph-profile-avatars/internal/api"
 	"goph-profile-avatars/internal/config"
@@ -17,7 +18,12 @@ func main() {
 	// httpLogger := logger.NewHTTPLogger()
 
 	// подключаем переменные окружения для сервака
-	cfg, err := config.Load("./configs/server.yaml")
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "./configs/server.yaml"
+	}
+
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		sugar.Fatal(err)
 	}
