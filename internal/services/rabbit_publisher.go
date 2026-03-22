@@ -7,6 +7,12 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+// ChannelInterface интерфейс для amqp.Channel
+type ChannelInterface interface {
+	PublishWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error
+	Close() error
+}
+
 type AvatarUploadEvent struct {
 	AvatarID string `json:"avatar_id"`
 	UserID   string `json:"user_id"`
@@ -20,18 +26,18 @@ type AvatarDeleteEvent struct {
 }
 
 type RabbitPublisher struct {
-	ch               *amqp.Channel
+	ch               ChannelInterface
 	exchange         string
 	updateRoutingKey string
 	deleteRoutingKey string
 }
 
-func NewRabbitPublisher(ch *amqp.Channel, exchange, UpdateRoutingKey, DeleteRoutingKey string) *RabbitPublisher {
+func NewRabbitPublisher(ch ChannelInterface, exchange, updateRoutingKey, deleteRoutingKey string) *RabbitPublisher {
 	return &RabbitPublisher{
 		ch:               ch,
 		exchange:         exchange,
-		updateRoutingKey: UpdateRoutingKey,
-		deleteRoutingKey: DeleteRoutingKey,
+		updateRoutingKey: updateRoutingKey,
+		deleteRoutingKey: deleteRoutingKey,
 	}
 }
 

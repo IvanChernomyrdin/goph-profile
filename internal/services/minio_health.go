@@ -6,11 +6,16 @@ import (
 	"github.com/minio/minio-go/v7"
 )
 
-type MinIOHealthService struct {
-	client *minio.Client
+// MinioClient интерфейс для minio клиента
+type MinioClient interface {
+	ListBuckets(ctx context.Context) ([]minio.BucketInfo, error)
 }
 
-func NewMinIOHealthService(client *minio.Client) *MinIOHealthService {
+type MinIOHealthService struct {
+	client MinioClient
+}
+
+func NewMinIOHealthService(client MinioClient) *MinIOHealthService {
 	return &MinIOHealthService{
 		client: client,
 	}

@@ -27,9 +27,18 @@ type DeleteHandler interface {
 	HandleDelete(ctx context.Context, event AvatarDeleteEvent) error
 }
 
+// ChannelInterface интерфейс для amqp.Channel
+type ChannelInterface interface {
+	ExchangeDeclare(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error
+	QueueDeclare(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (amqp.Queue, error)
+	QueueBind(name, key, exchange string, noWait bool, args amqp.Table) error
+	Qos(prefetchCount, prefetchSize int, global bool) error
+	Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args amqp.Table) (<-chan amqp.Delivery, error)
+}
+
 // RabbitConsumer слушает очередь RabbitMQ и передаёт сообщения в handler.
 type RabbitConsumer struct {
-	ch            *amqp.Channel
+	ch            ChannelInterface
 	cfg           config.RabbitMQConfig
 	uploadHandler UploadHandler
 	deleteHandler DeleteHandler
@@ -37,7 +46,7 @@ type RabbitConsumer struct {
 }
 
 func NewRabbitConsumer(
-	ch *amqp.Channel,
+	ch ChannelInterface,
 	cfg config.RabbitMQConfig,
 	uploadHandler UploadHandler,
 	deleteHandler DeleteHandler,

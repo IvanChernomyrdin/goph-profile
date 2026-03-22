@@ -8,12 +8,19 @@ import (
 	"github.com/minio/minio-go/v7"
 )
 
+// MinioClientInterface интерфейс для minio клиента
+type MinioClientInterface interface {
+	PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64, opts minio.PutObjectOptions) (minio.UploadInfo, error)
+	GetObject(ctx context.Context, bucketName, objectName string, opts minio.GetObjectOptions) (*minio.Object, error)
+	RemoveObject(ctx context.Context, bucketName, objectName string, opts minio.RemoveObjectOptions) error
+}
+
 type MinIOStorage struct {
-	client *minio.Client
+	client MinioClientInterface
 	bucket string
 }
 
-func NewMinIOStorage(client *minio.Client, bucket string) *MinIOStorage {
+func NewMinIOStorage(client MinioClientInterface, bucket string) *MinIOStorage {
 	return &MinIOStorage{
 		client: client,
 		bucket: bucket,

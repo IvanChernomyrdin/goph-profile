@@ -6,11 +6,18 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type RabbitMQHealthService struct {
-	conn *amqp.Connection
+// ConnectionInterface интерфейс для amqp.Connection
+type ConnectionInterface interface {
+	Channel() (*amqp.Channel, error)
+	IsClosed() bool
+	Close() error
 }
 
-func NewRabbitMQHealthService(conn *amqp.Connection) *RabbitMQHealthService {
+type RabbitMQHealthService struct {
+	conn ConnectionInterface
+}
+
+func NewRabbitMQHealthService(conn ConnectionInterface) *RabbitMQHealthService {
 	return &RabbitMQHealthService{conn: conn}
 }
 

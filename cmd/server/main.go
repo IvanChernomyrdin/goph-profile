@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	apis "goph-profile-avatars/internal/api"
 	"goph-profile-avatars/internal/config"
@@ -18,12 +22,7 @@ func main() {
 	// httpLogger := logger.NewHTTPLogger()
 
 	// подключаем переменные окружения для сервака
-	configPath := os.Getenv("CONFIG_PATH")
-	if configPath == "" {
-		configPath = "./configs/server.yaml"
-	}
-
-	cfg, err := config.Load(configPath)
+	cfg, err := config.Load("./configs/server.yaml")
 	if err != nil {
 		sugar.Fatal(err)
 	}
@@ -81,7 +80,30 @@ func main() {
 	addr := cfg.App.Host + ":" + cfg.App.Port
 	sugar.Infof("server started on %s", addr)
 
-	if err := http.ListenAndServe(addr, router); err != nil {
-		sugar.Fatal(err)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: router,
 	}
+	// канал для сигналов
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	// запуск сервера в отдельной горутине
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			sugar.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	// ждем сигнал
+	<-stop
+	sugar.Info("shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		sugar.Fatalf("server forced to shutdown: %v", err)
+	}
+
+	sugar.Info("server exiting")
 }

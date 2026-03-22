@@ -14,15 +14,31 @@ import (
 	"goph-profile-avatars/internal/services"
 )
 
+// AvatarRepositoryInterface интерфейс для репозитория аватаров
+type AvatarRepositoryInterface interface {
+	GetAvatarByID(ctx context.Context, avatarID string) (*repository.Avatar, error)
+	UpdateProcessingStatus(ctx context.Context, avatarID, status string) error
+	FailProcessing(ctx context.Context, avatarID string) error
+	CompleteProcessing(ctx context.Context, avatarID string, thumbnailKeys []byte) error
+	SoftDeleteAvatar(ctx context.Context, avatarID string) error
+}
+
+// StorageInterface интерфейс для хранилища
+type StorageInterface interface {
+	Download(ctx context.Context, key string) (*services.DownloadResult, error)
+	Upload(ctx context.Context, key string, body io.Reader, size int64, contentType string) error
+	Delete(ctx context.Context, key string) error
+}
+
 type Service struct {
-	avatarRepo *repository.AvatarRepository
-	storage    *services.MinIOStorage
+	avatarRepo AvatarRepositoryInterface
+	storage    StorageInterface
 	log        Logger
 }
 
 func NewAvatarWorkerService(
-	avatarRepo *repository.AvatarRepository,
-	storage *services.MinIOStorage,
+	avatarRepo AvatarRepositoryInterface,
+	storage StorageInterface,
 	log Logger,
 ) *Service {
 	return &Service{
