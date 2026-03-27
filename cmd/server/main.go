@@ -81,8 +81,12 @@ func main() {
 	sugar.Infof("server started on %s", addr)
 
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: router,
+		Addr:              addr,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	// канал для сигналов
 	stop := make(chan os.Signal, 1)

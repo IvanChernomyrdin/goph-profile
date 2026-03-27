@@ -1,14 +1,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"strconv"
 	"strings"
-
-	"net/http"
 
 	constErr "goph-profile-avatars/internal/errors"
 	"goph-profile-avatars/internal/repository"
@@ -31,22 +31,35 @@ var allowedAvatarMIMETypes = map[string]struct{}{
 	"image/webp": {},
 }
 
-// UploadAvatar загружает аватар пользователя.
-func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
-	// Получаем userID из обязательного заголовка.
+// isContextCancelled проверяет отмену контекста
+func isContextCancelled(ctx context.Context, w http.ResponseWriter) bool {
+	select {
+	case <-ctx.Done():
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Request cancelled",
+			Details: ctx.Err().Error(),
+		})
+		return true
+	default:
+		return false
+	}
+}
+
+// extractUserID извлекает и валидирует user ID из заголовка
+func extractUserID(r *http.Request, w http.ResponseWriter) (string, bool) {
 	userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
 	if userID == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
 			Error:   constErr.ErrXUserID.Error(),
 			Details: "X-User-ID header is required",
 		})
-		return
+		return "", false
 	}
+	return userID, true
+}
 
-	// Ограничиваем размер тела запроса
-	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarSize)
-
-	// Парсим multipart/form-data
+// parseMultipartFile парсит multipart форму и извлекает файл
+func parseMultipartFile(r *http.Request, w http.ResponseWriter) (multipart.File, *multipart.FileHeader, bool) {
 	if err := r.ParseMultipartForm(maxAvatarSize); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
@@ -54,57 +67,167 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 				Error:   "File too large",
 				MaxSize: maxAvatarSize,
 			})
-			return
+			return nil, nil, false
 		}
-
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
 			Error:   "Invalid multipart form",
 			Details: err.Error(),
 		})
-		return
+		return nil, nil, false
 	}
 
-	// Получаем файл
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
 			Error:   "File is required",
 			Details: "multipart field 'file' is missing",
 		})
-		return
+		return nil, nil, false
 	}
-	defer func() {
-		_ = file.Close()
-	}()
 
-	// Простейшая валидация имени файла
-	if strings.TrimSpace(header.Filename) == "" {
+	return file, header, true
+}
+
+// validateFileName проверяет имя файла
+func validateFileName(filename string, w http.ResponseWriter) bool {
+	if strings.TrimSpace(filename) == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
 			Error:   "Invalid file",
 			Details: "file name is empty",
 		})
-		return
+		return false
 	}
+	return true
+}
 
-	// проверка размера из multipart header
-	if header.Size <= 0 {
+// validateFileSize проверяет размер файла
+func validateFileSize(size int64, w http.ResponseWriter) bool {
+	if size <= 0 {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   "invalid file",
-			Details: "file name is empty",
+			Error:   "Invalid file",
+			Details: "file size is invalid",
 		})
-		return
+		return false
 	}
-
-	// проверка размера файла
-	if header.Size > maxAvatarSize {
+	if size > maxAvatarSize {
 		writeJSON(w, http.StatusRequestEntityTooLarge, ErrorResponse{
 			Error:   "File too large",
 			MaxSize: maxAvatarSize,
 		})
+		return false
+	}
+	return true
+}
+
+// handleServiceError обрабатывает ошибки
+func handleServiceError(err error, w http.ResponseWriter) bool {
+	if errors.Is(err, context.Canceled) {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "Request cancelled",
+			Details: "The request was cancelled by the client",
+		})
+		return true
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		writeJSON(w, http.StatusGatewayTimeout, ErrorResponse{
+			Error:   "Request timeout",
+			Details: "The request took too long to complete",
+		})
+		return true
+	}
+	if errors.Is(err, repository.ErrAvatarNotFound) {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{
+			Error: "avatar not found",
+		})
+		return true
+	}
+	return false
+}
+
+// validateAvatarID проверяет корректность UUID аватарки
+func validateAvatarID(avatarID string, w http.ResponseWriter) bool {
+	if avatarID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "avatar_id is required",
+			Details: "path param avatar_id is required",
+		})
+		return false
+	}
+	if _, err := uuid.Parse(avatarID); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "invalid avatar_id",
+			Details: "avatar_id must be a valid UUID",
+		})
+		return false
+	}
+	return true
+}
+
+// validateUserID проверяет user ID из path параметра
+func validateUserID(userID string, w http.ResponseWriter) bool {
+	if userID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "user_id is required",
+			Details: "path param user_id is required",
+		})
+		return false
+	}
+	return true
+}
+
+// validateSizeParam проверяет параметр size
+func validateSizeParam(size string, w http.ResponseWriter) bool {
+	if size != "" && size != "original" && size != "100x100" && size != "300x300" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error:   "invalid size",
+			Details: "allowed values: original, 100x100, 300x300",
+		})
+		return false
+	}
+	return true
+}
+
+// writeFileResponse записывает файл в ответ с заголовками
+func writeFileResponse(w http.ResponseWriter, result *GetAvatarResult) {
+	w.Header().Set("Content-Type", result.MimeType)
+	w.Header().Set("Content-Length", int64ToString(result.SizeBytes))
+	w.Header().Set("Cache-Control", "max-age=86400")
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := io.Copy(w, result.Reader); err != nil {
+		return
+	}
+}
+
+// UploadAvatar загружает аватар пользователя.
+func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if isContextCancelled(ctx, w) {
 		return
 	}
 
-	// Определяем MIME-тип по magic bytes, а не по Content-Type от клиента
+	userID, ok := extractUserID(r, w)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarSize)
+
+	file, header, ok := parseMultipartFile(r, w)
+	if !ok {
+		return
+	}
+	defer file.Close()
+
+	if !validateFileName(header.Filename, w) {
+		return
+	}
+
+	if !validateFileSize(header.Size, w) {
+		return
+	}
+
 	detectedContentType, err := detectAndValidateAvatarMime(file)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
@@ -114,14 +237,17 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Передаём всё в сервисный слой.
-	result, err := h.avatarService.UploadAvatar(UploadAvatarInput{
+	result, err := h.avatarService.UploadAvatar(ctx, UploadAvatarInput{
 		UserID:      userID,
 		FileName:    header.Filename,
 		ContentType: detectedContentType,
 		Size:        header.Size,
 		File:        file,
 	})
+
+	if handleServiceError(err, w) {
+		return
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 			Error:   "Failed to upload avatar",
@@ -135,114 +261,75 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 
 // GetAvatar получение аватарки
 func (h *Handler) GetAvatar(w http.ResponseWriter, r *http.Request) {
-	avatarID := strings.TrimSpace(chi.URLParam(r, "avatar_id"))
-	if avatarID == "" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   "avatar_id is required",
-			Details: "path param avatar_id is required",
-		})
-		return
-	}
+	ctx := r.Context()
 
-	if _, err := uuid.Parse(avatarID); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   "invalid avatar_id",
-			Details: "avatar_id must be a valid UUID",
-		})
+	avatarID := strings.TrimSpace(chi.URLParam(r, "avatar_id"))
+	if !validateAvatarID(avatarID, w) {
 		return
 	}
 
 	size := strings.TrimSpace(r.URL.Query().Get("size"))
-	if size != "" && size != "original" && size != "100x100" && size != "300x300" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   "invalid size",
-			Details: "allowed values: original, 100x100, 300x300",
-		})
+	if !validateSizeParam(size, w) {
 		return
 	}
 
-	result, err := h.avatarService.GetAvatarByID(avatarID, size)
-	if err != nil {
-		if errors.Is(err, repository.ErrAvatarNotFound) {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{
-				Error: "avatar not found",
-			})
-			return
-		}
+	result, err := h.avatarService.GetAvatarByID(ctx, avatarID, size)
 
+	if handleServiceError(err, w) {
+		return
+	}
+	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 			Error:   "failed to get avatar",
 			Details: err.Error(),
 		})
 		return
 	}
-	defer func() {
-		_ = result.Reader.Close()
-	}()
+	defer result.Reader.Close()
 
-	w.Header().Set("Content-Type", result.MimeType)
-	w.Header().Set("Content-Length", int64ToString(result.SizeBytes))
-	w.Header().Set("Cache-Control", "max-age=86400")
-	w.WriteHeader(http.StatusOK)
-
-	if _, err := io.Copy(w, result.Reader); err != nil {
-		return
-	}
+	writeFileResponse(w, result)
 }
 
 // GetUserAvatar получение текущей аватарки пользователя
 func (h *Handler) GetUserAvatar(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	userID := strings.TrimSpace(chi.URLParam(r, "user_id"))
-	if userID == "" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   "user_id is required",
-			Details: "path param user_id is required",
-		})
+	if !validateUserID(userID, w) {
 		return
 	}
 
-	result, err := h.avatarService.GetUserAvatar(userID)
-	if err != nil {
-		if errors.Is(err, repository.ErrAvatarNotFound) {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{
-				Error: "avatar not found",
-			})
-			return
-		}
+	result, err := h.avatarService.GetUserAvatar(ctx, userID)
 
+	if handleServiceError(err, w) {
+		return
+	}
+	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 			Error:   "failed to get user avatar",
 			Details: err.Error(),
 		})
 		return
 	}
-	defer func() {
-		_ = result.Reader.Close()
-	}()
+	defer result.Reader.Close()
 
-	w.Header().Set("Content-Type", result.MimeType)
-	w.Header().Set("Content-Length", int64ToString(result.SizeBytes))
-	w.Header().Set("Cache-Control", "max-age=86400")
-	w.WriteHeader(http.StatusOK)
-
-	if _, err := io.Copy(w, result.Reader); err != nil {
-		return
-	}
+	writeFileResponse(w, result)
 }
 
 // GetUserAvatars получение всех аватарок пользователя
 func (h *Handler) GetUserAvatars(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	userID := strings.TrimSpace(chi.URLParam(r, "user_id"))
-	if userID == "" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   "user_id is required",
-			Details: "path param user_id is required",
-		})
+	if !validateUserID(userID, w) {
 		return
 	}
 
-	result, err := h.avatarService.GetListUserAvatar(userID)
+	result, err := h.avatarService.GetListUserAvatar(ctx, userID)
 	if err != nil {
+		if handleServiceError(err, w) {
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 			Error:   "failed to get user avatars",
 			Details: err.Error(),
@@ -255,40 +342,24 @@ func (h *Handler) GetUserAvatars(w http.ResponseWriter, r *http.Request) {
 
 // UpdateCurrentAvatar выставление текущей аватарки пользователя
 func (h *Handler) UpdateCurrentAvatar(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	avatarID := strings.TrimSpace(chi.URLParam(r, "avatar_id"))
-	if avatarID == "" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   "avatar_id is required",
-			Details: "path param avatar_id is required",
-		})
+	if !validateAvatarID(avatarID, w) {
 		return
 	}
 
-	if _, err := uuid.Parse(avatarID); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   "invalid avatar_id",
-			Details: "avatar_id must be a valid UUID",
-		})
+	userID, ok := extractUserID(r, w)
+	if !ok {
 		return
 	}
 
-	userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
-	if userID == "" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   constErr.ErrXUserID.Error(),
-			Details: "X-User-ID header is required",
-		})
+	err := h.avatarService.UpdateCurrentAvatar(ctx, userID, avatarID)
+
+	if handleServiceError(err, w) {
 		return
 	}
-
-	if err := h.avatarService.UpdateCurrentAvatar(userID, avatarID); err != nil {
-		if errors.Is(err, repository.ErrAvatarNotFound) {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{
-				Error: "avatar not found",
-			})
-			return
-		}
-
+	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 			Error:   "failed to update current avatar",
 			Details: err.Error(),
@@ -305,16 +376,33 @@ func (h *Handler) UpdateCurrentAvatar(w http.ResponseWriter, r *http.Request) {
 
 // DeleteUserCurrentAvatar удаление аватарки из статуса текущей
 func (h *Handler) DeleteUserCurrentAvatar(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	userID := strings.TrimSpace(chi.URLParam(r, "user_id"))
-	if userID == "" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   "user_id is required",
-			Details: "path param user_id is required",
+	if !validateUserID(userID, w) {
+		return
+	}
+
+	// Получаем авторизованного пользователя из заголовка
+	authUserID, ok := extractUserID(r, w)
+	if !ok {
+		return
+	}
+
+	// Проверяем, что пользователь удаляет свою собственную аватарку
+	if authUserID != userID {
+		writeJSON(w, http.StatusForbidden, ErrorResponse{
+			Error:   "Forbidden",
+			Details: "You can only delete your own current avatar",
 		})
 		return
 	}
 
-	if err := h.avatarService.DeleteCurrentUserAvatar(userID); err != nil {
+	err := h.avatarService.DeleteCurrentUserAvatar(ctx, userID)
+	if err != nil {
+		if handleServiceError(err, w) {
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 			Error:   "error deleting current user avatar",
 			Details: err.Error(),
@@ -330,32 +418,39 @@ func (h *Handler) DeleteUserCurrentAvatar(w http.ResponseWriter, r *http.Request
 
 // DeleteAvatarByID удаление аватарки по ID
 func (h *Handler) DeleteAvatarByID(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	avatarID := strings.TrimSpace(chi.URLParam(r, "avatar_id"))
-	if avatarID == "" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   "avatar_id is required",
-			Details: "path param avatar_id is required",
-		})
+	if !validateAvatarID(avatarID, w) {
 		return
 	}
-	userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
-	if userID == "" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   constErr.ErrXUserID.Error(),
-			Details: "X-User-ID header is required",
-		})
+
+	userID, ok := extractUserID(r, w)
+	if !ok {
 		return
 	}
-	if _, err := uuid.Parse(avatarID); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Error:   "invalid avatar_id",
-			Details: "avatar_id must be a valid UUID",
-		})
-		return
-	}
-	// вызываем функцию сервисного слоя которая отправит в rabbitmq сообщение о запросе на удаление
-	err := h.avatarService.DeleteAvatarByID(avatarID, userID)
+
+	err := h.avatarService.DeleteAvatarByID(ctx, avatarID, userID)
 	if err != nil {
+		// Проверяем ошибку авторизации (аватарка не принадлежит пользователю)
+		if strings.Contains(err.Error(), "unauthorized") || strings.Contains(err.Error(), "does not belong") {
+			writeJSON(w, http.StatusForbidden, ErrorResponse{
+				Error:   "Forbidden",
+				Details: "You don't have permission to delete this avatar",
+			})
+			return
+		}
+
+		// Проверяем, не удалена ли уже аватарка
+		if strings.Contains(err.Error(), "already deleted") {
+			writeJSON(w, http.StatusGone, ErrorResponse{
+				Error:   "Avatar already deleted",
+				Details: "This avatar has already been deleted",
+			})
+			return
+		}
+
+		// Проверяем, не находится ли уже в очереди на удаление
 		if errors.Is(err, constErr.ErrAvatarDeletionAlreadyQueued) {
 			writeJSON(w, http.StatusAccepted, map[string]string{
 				"status":  "already_queued",
@@ -363,12 +458,20 @@ func (h *Handler) DeleteAvatarByID(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+
+		// Обрабатываем стандартные ошибки (context canceled, deadline, not found)
+		if handleServiceError(err, w) {
+			return
+		}
+
+		// Все остальные ошибки
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-			Error:   err.Error(),
-			Details: "error sending to rabbitMQ",
+			Error:   "Failed to delete avatar",
+			Details: err.Error(),
 		})
 		return
 	}
+
 	writeJSON(w, http.StatusAccepted, map[string]string{
 		"status":  "queued",
 		"message": "Avatar has been added to deletion queue",
@@ -396,13 +499,11 @@ func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 // 3. проверяет whitelist допустимых типов
 // 4. возвращает указатель чтения в начало файла
 func detectAndValidateAvatarMime(file multipart.File) (string, error) {
-	// multipart.File обычно поддерживает Seek, но проверим явно
 	seeker, ok := file.(io.Seeker)
 	if !ok {
 		return "", errors.New("uploaded file is not seekable")
 	}
 
-	// Читаем первые 512 байт — этого достаточно для http.DetectContentType
 	buf := make([]byte, 512)
 	n, err := file.Read(buf)
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -418,8 +519,6 @@ func detectAndValidateAvatarMime(file multipart.File) (string, error) {
 		return "", errors.New("allowed types: image/jpeg, image/png, image/webp")
 	}
 
-	// Возвращаем указатель обратно в начало,
-	// чтобы сервис смог прочитать файл целиком
 	if _, err := seeker.Seek(0, io.SeekStart); err != nil {
 		return "", errors.New("failed to reset file pointer")
 	}

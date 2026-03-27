@@ -15,6 +15,8 @@ import (
 	"goph-profile-avatars/internal/repository"
 	"goph-profile-avatars/internal/services"
 	"goph-profile-avatars/internal/services/mocks"
+
+	status "goph-profile-avatars/internal/config/status"
 )
 
 const maxAvatarSize = 10 << 20
@@ -255,7 +257,7 @@ func TestGetListUserAvatar_Success(t *testing.T) {
 			FileName:         "avatar1.jpg",
 			MimeType:         "image/jpeg",
 			SizeBytes:        1024,
-			UploadStatus:     "uploaded",
+			UploadStatus:     status.Uploaded,
 			ProcessingStatus: "completed",
 			CreatedAt:        now,
 			UpdatedAt:        now,
@@ -268,7 +270,7 @@ func TestGetListUserAvatar_Success(t *testing.T) {
 			FileName:         "avatar2.jpg",
 			MimeType:         "image/jpeg",
 			SizeBytes:        2048,
-			UploadStatus:     "uploaded",
+			UploadStatus:     status.Uploaded,
 			ProcessingStatus: "completed",
 			CreatedAt:        now,
 			UpdatedAt:        now,

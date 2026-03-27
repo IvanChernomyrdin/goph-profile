@@ -1,13 +1,15 @@
 package api
 
+import "context"
+
 type AvatarService interface {
-	UploadAvatar(input UploadAvatarInput) (*UploadAvatarResult, error)
-	GetAvatarByID(avatarID, size string) (*GetAvatarResult, error)
-	GetUserAvatar(userID string) (*GetAvatarResult, error)
-	GetListUserAvatar(userID string) ([]AvatarItem, error)
-	UpdateCurrentAvatar(userID, avatarID string) error
-	DeleteAvatarByID(avatarID, userID string) error
-	DeleteCurrentUserAvatar(userID string) error
+	UploadAvatar(ctx context.Context, input UploadAvatarInput) (*UploadAvatarResult, error)
+	GetAvatarByID(ctx context.Context, avatarID, size string) (*GetAvatarResult, error)
+	GetUserAvatar(ctx context.Context, userID string) (*GetAvatarResult, error)
+	GetListUserAvatar(ctx context.Context, userID string) ([]AvatarItem, error)
+	UpdateCurrentAvatar(ctx context.Context, userID, avatarID string) error
+	DeleteAvatarByID(ctx context.Context, avatarID, userID string) error
+	DeleteCurrentUserAvatar(ctx context.Context, userID string) error
 }
 
 type Handler struct {

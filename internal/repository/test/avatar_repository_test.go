@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	status "goph-profile-avatars/internal/config/status"
+
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -44,8 +46,8 @@ func TestAvatarRepository_CreateAvatar(t *testing.T) {
 		SizeBytes:        1024,
 		S3Key:            "avatars/user123/avatar.jpg",
 		ThumbnailS3Keys:  []byte(`{"small":"key1","medium":"key2"}`),
-		UploadStatus:     "uploaded",
-		ProcessingStatus: "pending",
+		UploadStatus:     status.Uploaded,
+		ProcessingStatus: status.Pending,
 	}
 
 	mock.ExpectExec(regexp.QuoteMeta(`
@@ -99,7 +101,7 @@ func TestAvatarRepository_GetAvatarByID(t *testing.T) {
 		"created_at", "updated_at", "deleted_at",
 	}).AddRow(
 		avatarID, "user123", "avatar.jpg", "image/jpeg", 1024,
-		"s3://bucket/avatar.jpg", []byte(`{"small":"key"}`), "uploaded", "completed",
+		"s3://bucket/avatar.jpg", []byte(`{"small":"key"}`), status.Uploaded, "completed",
 		now, now, nil,
 	)
 
@@ -278,7 +280,7 @@ func TestAvatarRepository_GetUserAvatar(t *testing.T) {
 		"created_at", "updated_at", "deleted_at", "is_current",
 	}).AddRow(
 		avatarID, userID, "avatar.jpg", "image/jpeg", 1024,
-		"s3://bucket/avatar.jpg", []byte(`{"small":"key"}`), "uploaded", "completed",
+		"s3://bucket/avatar.jpg", []byte(`{"small":"key"}`), status.Uploaded, "completed",
 		now, now, nil, true,
 	)
 
@@ -333,11 +335,11 @@ func TestAvatarRepository_GetListUserAvatar(t *testing.T) {
 		"created_at", "updated_at", "deleted_at", "is_current",
 	}).AddRow(
 		uuid.New().String(), userID, "avatar1.jpg", "image/jpeg", 1024,
-		"s3://bucket/avatar1.jpg", []byte(`{"small":"key1"}`), "uploaded", "completed",
+		"s3://bucket/avatar1.jpg", []byte(`{"small":"key1"}`), status.Uploaded, "completed",
 		now, now, nil, true,
 	).AddRow(
 		uuid.New().String(), userID, "avatar2.jpg", "image/png", 2048,
-		"s3://bucket/avatar2.jpg", []byte(`{"small":"key2"}`), "uploaded", "completed",
+		"s3://bucket/avatar2.jpg", []byte(`{"small":"key2"}`), status.Uploaded, "completed",
 		now, now, nil, false,
 	)
 

@@ -1,5 +1,22 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Создаем ENUM для статусов загрузки
+CREATE TYPE upload_status_enum AS ENUM (
+    'uploading',
+    'uploaded', 
+    'failed',
+    'deleted'
+);
+
+-- Создаем ENUM для статусов обработки
+CREATE TYPE processing_status_enum AS ENUM (
+    'pending',
+    'processing',
+    'completed',
+    'failed'
+);
+
+-- Создаем таблицу с использованием enum
 CREATE TABLE IF NOT EXISTS public.avatars
 (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -11,21 +28,14 @@ CREATE TABLE IF NOT EXISTS public.avatars
             CHECK (size_bytes > 0),
     s3_key            VARCHAR(500) NOT NULL,
     thumbnail_s3_keys JSONB,
-    upload_status     VARCHAR(50) NOT NULL DEFAULT 'uploading'
-        CONSTRAINT avatars_upload_status_chk
-            CHECK (
-                upload_status IN ('uploading', 'uploaded', 'failed', 'deleted')
-            ),
-    processing_status VARCHAR(50) NOT NULL DEFAULT 'pending'
-        CONSTRAINT avatars_processing_status_chk
-            CHECK (
-                processing_status IN ('pending', 'processing', 'completed', 'failed')
-            ),
+    upload_status     upload_status_enum NOT NULL DEFAULT 'uploading',
+    processing_status processing_status_enum NOT NULL DEFAULT 'pending',
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at        TIMESTAMPTZ,
     is_current        BOOLEAN NOT NULL DEFAULT FALSE
 );
+
 
 CREATE INDEX IF NOT EXISTS idx_avatars_user_id
     ON public.avatars (user_id)

@@ -20,6 +20,8 @@ import (
 	"goph-profile-avatars/internal/repository"
 	"goph-profile-avatars/internal/services"
 
+	status "goph-profile-avatars/internal/config/status"
+
 	_ "github.com/lib/pq"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -80,10 +82,10 @@ func TestUploadAvatar_Integration(t *testing.T) {
 	if row.UserID != "user-123" {
 		t.Fatalf("unexpected db user_id: %s", row.UserID)
 	}
-	if row.UploadStatus != "uploaded" {
+	if row.UploadStatus != status.Uploaded {
 		t.Fatalf("unexpected upload_status: %s", row.UploadStatus)
 	}
-	if row.ProcessingStatus != "pending" {
+	if row.ProcessingStatus != status.Pending {
 		t.Fatalf("unexpected processing_status: %s", row.ProcessingStatus)
 	}
 	if row.S3Key == "" {

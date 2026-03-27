@@ -14,10 +14,17 @@ import (
 	"goph-profile-avatars/internal/api"
 	"goph-profile-avatars/internal/repository"
 
+	status "goph-profile-avatars/internal/config/status"
+
 	"github.com/google/uuid"
 )
 
 const maxAvatarSize = 10 << 20 // 10 MB
+
+var (
+	ErrUnauthorized   = fmt.Errorf("unauthorized access to avatar")
+	ErrAlreadyDeleted = fmt.Errorf("avatar already deleted")
+)
 
 type avatarRepo interface {
 	CreateAvatar(ctx context.Context, avatar repository.CreateAvatarParams) error
@@ -62,8 +69,8 @@ func NewAvatarService(
 }
 
 // загрузка аватарки, сохранение в бд методанных, сохранение в minio оригинала, отправка в rabbitmq уведомление для воркера
-func (s *AvatarService) UploadAvatar(input api.UploadAvatarInput) (*api.UploadAvatarResult, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+func (s *AvatarService) UploadAvatar(ctx context.Context, input api.UploadAvatarInput) (*api.UploadAvatarResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
 	data, err := io.ReadAll(input.File)
@@ -111,8 +118,8 @@ func (s *AvatarService) UploadAvatar(input api.UploadAvatarInput) (*api.UploadAv
 		SizeBytes:        int64(len(data)),
 		S3Key:            s3Key,
 		ThumbnailS3Keys:  thumbnailKeys,
-		UploadStatus:     "uploaded",
-		ProcessingStatus: "pending",
+		UploadStatus:     status.Uploaded,
+		ProcessingStatus: status.Pending,
 	}); err != nil {
 		return nil, fmt.Errorf("save avatar metadata: %w", err)
 	}
@@ -181,9 +188,7 @@ func safeFileName(name string) string {
 }
 
 // получаем методанные из бд, дальше загружаем данные из minio и возвращаем аватарку
-func (s *AvatarService) GetAvatarByID(avatarID, size string) (*api.GetAvatarResult, error) {
-	ctx := context.Background()
-
+func (s *AvatarService) GetAvatarByID(ctx context.Context, avatarID, size string) (*api.GetAvatarResult, error) {
 	avatar, err := s.repo.GetAvatarByID(ctx, avatarID)
 	if err != nil {
 		return nil, fmt.Errorf("get avatar by id: %w", err)
@@ -228,9 +233,7 @@ func parseThumbnailKeys(raw []byte) map[string]string {
 }
 
 // получаем одну главную аватарку пользователя
-func (s *AvatarService) GetUserAvatar(userID string) (*api.GetAvatarResult, error) {
-	ctx := context.Background()
-
+func (s *AvatarService) GetUserAvatar(ctx context.Context, userID string) (*api.GetAvatarResult, error) {
 	avatar, err := s.repo.GetUserAvatar(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get user avatar: %w", err)
@@ -252,9 +255,7 @@ func (s *AvatarService) GetUserAvatar(userID string) (*api.GetAvatarResult, erro
 }
 
 // получаем список всех аватарок пользователя
-func (s *AvatarService) GetListUserAvatar(userID string) ([]api.AvatarItem, error) {
-	ctx := context.Background()
-
+func (s *AvatarService) GetListUserAvatar(ctx context.Context, userID string) ([]api.AvatarItem, error) {
 	avatars, err := s.repo.GetListUserAvatar(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get list user avatar: %w", err)
@@ -290,9 +291,18 @@ func (s *AvatarService) GetListUserAvatar(userID string) ([]api.AvatarItem, erro
 	return result, nil
 }
 
-func (s *AvatarService) UpdateCurrentAvatar(userID, avatarID string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+func (s *AvatarService) UpdateCurrentAvatar(ctx context.Context, userID, avatarID string) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	// проверяем что принадленит аватарка пользователю
+	avatar, err := s.repo.GetAvatarByID(ctx, avatarID)
+	if err != nil {
+		return fmt.Errorf("get avatar by id: %w", err)
+	}
+
+	if avatar.UserID != userID {
+		return fmt.Errorf("avatar does not belong to user: unauthorized")
+	}
 
 	if err := s.repo.SetCurrentAvatar(ctx, userID, avatarID); err != nil {
 		return fmt.Errorf("set current avatar: %w", err)
@@ -302,8 +312,8 @@ func (s *AvatarService) UpdateCurrentAvatar(userID, avatarID string) error {
 }
 
 // отправка сообщения в брокер на удаление
-func (s *AvatarService) DeleteAvatarByID(avatarID, userID string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func (s *AvatarService) DeleteAvatarByID(ctx context.Context, avatarID, userID string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	res, err := s.repo.GetAvatarByID(ctx, avatarID)
@@ -311,21 +321,30 @@ func (s *AvatarService) DeleteAvatarByID(avatarID, userID string) error {
 		return fmt.Errorf("get avatar by id: %w", err)
 	}
 
-	// после записи процесса в бд отправляем в брокер сообщений
+	// ПРОВЕРКА: аватарка принадлежит пользователю
+	if res.UserID != userID {
+		return ErrUnauthorized
+	}
+
+	// Проверка, не удалена ли уже аватарка
+	if res.DeletedAt.Valid {
+		return ErrAlreadyDeleted
+	}
+
+	// отправляем в брокер сообщений
 	err = s.publisher.PublishDeleteEvent(ctx, AvatarDeleteEvent{
 		AvatarID: res.ID,
 		UserID:   res.UserID,
 		S3Key:    res.S3Key,
 	})
-	// если не удачно отправлили в rebbitmq тогда откатываем запись в бд
 	if err != nil {
 		return fmt.Errorf("publish delete event: %w", err)
 	}
 	return nil
 }
 
-func (s *AvatarService) DeleteCurrentUserAvatar(userID string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (s *AvatarService) DeleteCurrentUserAvatar(ctx context.Context, userID string) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	return s.repo.DeleteCurrentUserAvatar(ctx, userID)

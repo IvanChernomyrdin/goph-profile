@@ -14,6 +14,7 @@ import (
 
 	"goph-profile-avatars/internal/api"
 	"goph-profile-avatars/internal/api/mocks"
+	status "goph-profile-avatars/internal/config/status"
 	constErr "goph-profile-avatars/internal/errors"
 )
 
@@ -41,7 +42,7 @@ func TestUploadAvatar(t *testing.T) {
 					ID:        validUUID,
 					UserID:    "user123",
 					URL:       "http://example.com/avatar.jpg",
-					Status:    "uploaded",
+					Status:    status.Uploaded,
 					CreatedAt: "2024-01-01T00:00:00Z",
 				}, nil)
 			},
@@ -59,7 +60,7 @@ func TestUploadAvatar(t *testing.T) {
 					ID:        validUUID,
 					UserID:    "user123",
 					URL:       "http://example.com/avatar.png",
-					Status:    "uploaded",
+					Status:    status.Uploaded,
 					CreatedAt: "2024-01-01T00:00:00Z",
 				}, nil)
 			},
