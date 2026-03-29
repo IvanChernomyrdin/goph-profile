@@ -2,6 +2,7 @@ package test
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"testing"
 	"time"
@@ -56,7 +57,7 @@ func TestUploadAvatar_Success(t *testing.T) {
 		return event.UserID == userID
 	})).Return(nil)
 
-	result, err := service.UploadAvatar(input)
+	result, err := service.UploadAvatar(context.Background(), input)
 
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.ID)
@@ -84,7 +85,7 @@ func TestUploadAvatar_FileTooLarge(t *testing.T) {
 		File:     bytes.NewReader(largeData),
 	}
 
-	result, err := service.UploadAvatar(input)
+	result, err := service.UploadAvatar(context.Background(), input)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "file too large")
@@ -105,7 +106,7 @@ func TestUploadAvatar_InvalidFileFormat(t *testing.T) {
 		File:     bytes.NewReader([]byte("text file content")),
 	}
 
-	result, err := service.UploadAvatar(input)
+	result, err := service.UploadAvatar(context.Background(), input)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid file format")
@@ -126,7 +127,7 @@ func TestUploadAvatar_EmptyFile(t *testing.T) {
 		File:     bytes.NewReader([]byte{}),
 	}
 
-	result, err := service.UploadAvatar(input)
+	result, err := service.UploadAvatar(context.Background(), input)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "empty file")
@@ -163,7 +164,7 @@ func TestGetAvatarByID_Success(t *testing.T) {
 	repo.On("GetAvatarByID", mock.Anything, avatarID).Return(avatar, nil)
 	storage.On("Download", mock.Anything, avatar.S3Key).Return(downloadResult, nil)
 
-	result, err := service.GetAvatarByID(avatarID, "original")
+	result, err := service.GetAvatarByID(context.Background(), avatarID, "original")
 
 	require.NoError(t, err)
 	assert.Equal(t, avatarID, result.ID)
@@ -187,7 +188,7 @@ func TestGetAvatarByID_NotFound(t *testing.T) {
 
 	repo.On("GetAvatarByID", mock.Anything, avatarID).Return(nil, repository.ErrAvatarNotFound)
 
-	result, err := service.GetAvatarByID(avatarID, "original")
+	result, err := service.GetAvatarByID(context.Background(), avatarID, "original")
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), repository.ErrAvatarNotFound.Error())
@@ -228,7 +229,7 @@ func TestGetUserAvatar_Success(t *testing.T) {
 	repo.On("GetUserAvatar", mock.Anything, userID).Return(avatar, nil)
 	storage.On("Download", mock.Anything, avatar.S3Key).Return(downloadResult, nil)
 
-	result, err := service.GetUserAvatar(userID)
+	result, err := service.GetUserAvatar(context.Background(), userID)
 
 	require.NoError(t, err)
 	assert.Equal(t, avatarID, result.ID)
@@ -281,7 +282,7 @@ func TestGetListUserAvatar_Success(t *testing.T) {
 
 	repo.On("GetListUserAvatar", mock.Anything, userID).Return(avatars, nil)
 
-	result, err := service.GetListUserAvatar(userID)
+	result, err := service.GetListUserAvatar(context.Background(), userID)
 
 	require.NoError(t, err)
 	assert.Len(t, result, 2)
@@ -306,7 +307,7 @@ func TestUpdateCurrentAvatar_Success(t *testing.T) {
 
 	repo.On("SetCurrentAvatar", mock.Anything, userID, avatarID).Return(nil)
 
-	err := service.UpdateCurrentAvatar(userID, avatarID)
+	err := service.UpdateCurrentAvatar(context.Background(), userID, avatarID)
 
 	assert.NoError(t, err)
 	repo.AssertExpectations(t)
@@ -323,7 +324,7 @@ func TestDeleteCurrentUserAvatar_Success(t *testing.T) {
 
 	repo.On("DeleteCurrentUserAvatar", mock.Anything, userID).Return(nil)
 
-	err := service.DeleteCurrentUserAvatar(userID)
+	err := service.DeleteCurrentUserAvatar(context.Background(), userID)
 
 	assert.NoError(t, err)
 	repo.AssertExpectations(t)
@@ -354,7 +355,7 @@ func TestDeleteAvatarByID_Success(t *testing.T) {
 		return event.AvatarID == avatarID && event.UserID == userID
 	})).Return(nil)
 
-	err := service.DeleteAvatarByID(avatarID, userID)
+	err := service.DeleteAvatarByID(context.Background(), avatarID, userID)
 
 	assert.NoError(t, err)
 	repo.AssertExpectations(t)
@@ -373,7 +374,7 @@ func TestDeleteAvatarByID_NotFound(t *testing.T) {
 
 	repo.On("GetAvatarByID", mock.Anything, avatarID).Return(nil, repository.ErrAvatarNotFound)
 
-	err := service.DeleteAvatarByID(avatarID, userID)
+	err := service.DeleteAvatarByID(context.Background(), avatarID, userID)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), repository.ErrAvatarNotFound.Error())

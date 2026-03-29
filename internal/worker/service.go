@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"path"
 
 	"github.com/disintegration/imaging"
@@ -33,13 +34,13 @@ type StorageInterface interface {
 type Service struct {
 	avatarRepo AvatarRepositoryInterface
 	storage    StorageInterface
-	log        Logger
+	log        *slog.Logger
 }
 
 func NewAvatarWorkerService(
 	avatarRepo AvatarRepositoryInterface,
 	storage StorageInterface,
-	log Logger,
+	log *slog.Logger,
 ) *Service {
 	return &Service{
 		avatarRepo: avatarRepo,
@@ -57,7 +58,7 @@ func NewAvatarWorkerService(
 // 6. загружает их в MinIO
 // 7. обновляет БД в completed
 func (s *Service) HandleUpload(ctx context.Context, event AvatarUploadEvent) error {
-	s.log.Infof("handle upload started: avatar_id=%s", event.AvatarID)
+	s.log.Info("Processing avatar", "avatar_id", event.AvatarID)
 
 	avatar, err := s.avatarRepo.GetAvatarByID(ctx, event.AvatarID)
 	if err != nil {
@@ -65,7 +66,7 @@ func (s *Service) HandleUpload(ctx context.Context, event AvatarUploadEvent) err
 	}
 
 	if avatar.ProcessingStatus == "completed" {
-		s.log.Infof("avatar already completed: avatar_id=%s", avatar.ID)
+		s.log.Info("avatar already completed", "avatar_id", avatar.ID)
 		return nil
 	}
 
@@ -76,22 +77,22 @@ func (s *Service) HandleUpload(ctx context.Context, event AvatarUploadEvent) err
 	if err := s.processAvatar(ctx, avatar); err != nil {
 		failErr := s.avatarRepo.FailProcessing(ctx, avatar.ID)
 		if failErr != nil {
-			s.log.Errorf("failed to set failed status for avatar_id=%s: %v", avatar.ID, failErr)
+			s.log.Error("failed to set failed status", "avatar_id", avatar.ID, "error", failErr)
 		}
 		return err
 	}
 
-	s.log.Infof("handle upload finished successfully: avatar_id=%s", avatar.ID)
+	s.log.Info("handle upload finished successfully", "avatar_id", avatar.ID)
 	return nil
 }
 
 func (s *Service) HandleDelete(ctx context.Context, event AvatarDeleteEvent) error {
-	s.log.Infof("handle delete started: avatar_id=%s", event.AvatarID)
+	s.log.Info("handle delete started", "avatar_id", event.AvatarID)
 
 	avatar, err := s.avatarRepo.GetAvatarByID(ctx, event.AvatarID)
 	if err != nil {
 		if err == repository.ErrAvatarNotFound {
-			s.log.Infof("avatar already deleted or not found: avatar_id=%s", event.AvatarID)
+			s.log.Info("avatar already deleted or not found", "avatar_id", event.AvatarID)
 			return nil
 		}
 		return fmt.Errorf("get avatar by id: %w", err)
@@ -105,7 +106,7 @@ func (s *Service) HandleDelete(ctx context.Context, event AvatarDeleteEvent) err
 		return fmt.Errorf("soft delete avatar in db: %w", err)
 	}
 
-	s.log.Infof("handle delete finished successfully: avatar_id=%s", avatar.ID)
+	s.log.Info("handle delete finished successfully", "avatar_id", avatar.ID)
 	return nil
 }
 

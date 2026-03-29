@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // ChannelInterface интерфейс для amqp.Channel
@@ -42,12 +44,17 @@ func NewRabbitPublisher(ch ChannelInterface, exchange, updateRoutingKey, deleteR
 }
 
 func (p *RabbitPublisher) PublishUploadEvent(ctx context.Context, event AvatarUploadEvent) error {
+	ctx, span := otel.Tracer("avatars-service/rabbit-publisher").Start(ctx, "publish-upload")
+	defer span.End()
+
 	body, err := json.Marshal(event)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "marshal failed")
 		return err
 	}
 
-	return p.ch.PublishWithContext(
+	err = p.ch.PublishWithContext(
 		ctx,
 		p.exchange,
 		p.updateRoutingKey,
@@ -58,15 +65,27 @@ func (p *RabbitPublisher) PublishUploadEvent(ctx context.Context, event AvatarUp
 			Body:        body,
 		},
 	)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "publish failed")
+	}
+
+	return err
 }
 
 func (p *RabbitPublisher) PublishDeleteEvent(ctx context.Context, event AvatarDeleteEvent) error {
+	ctx, span := otel.Tracer("avatars-service/rabbit-publisher").Start(ctx, "publish-delete")
+	defer span.End()
+
 	body, err := json.Marshal(event)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "marshal failed")
 		return err
 	}
 
-	return p.ch.PublishWithContext(
+	err = p.ch.PublishWithContext(
 		ctx,
 		p.exchange,
 		p.deleteRoutingKey,
@@ -77,4 +96,11 @@ func (p *RabbitPublisher) PublishDeleteEvent(ctx context.Context, event AvatarDe
 			Body:        body,
 		},
 	)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "publish error")
+	}
+
+	return err
 }

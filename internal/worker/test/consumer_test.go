@@ -2,6 +2,8 @@ package test
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"testing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -70,28 +72,12 @@ type mockLogger struct {
 	mock.Mock
 }
 
-func (m *mockLogger) Info(args ...any) {
-	m.Called(args...)
-}
-
-func (m *mockLogger) Infof(template string, args ...any) {
-	m.Called(template, args)
-}
-
-func (m *mockLogger) Error(args ...any) {
-	m.Called(args...)
-}
-
-func (m *mockLogger) Errorf(template string, args ...any) {
-	m.Called(template, args)
-}
-
 func TestNewRabbitConsumer(t *testing.T) {
 	mockCh := new(mockChannel)
 	cfg := config.RabbitMQConfig{}
 	uploadHandler := new(mockUploadHandler)
 	deleteHandler := new(mockDeleteHandler)
-	log := new(mockLogger)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	consumer := worker.NewRabbitConsumer(mockCh, cfg, uploadHandler, deleteHandler, log)
 

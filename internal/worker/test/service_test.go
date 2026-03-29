@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -72,7 +73,7 @@ func (m *mockStorage) Delete(ctx context.Context, key string) error {
 func TestNewAvatarWorkerService(t *testing.T) {
 	repo := new(mockAvatarRepo)
 	storage := new(mockStorage)
-	log := new(mockLogger)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	service := worker.NewAvatarWorkerService(repo, storage, log)
 
