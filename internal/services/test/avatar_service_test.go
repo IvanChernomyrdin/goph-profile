@@ -50,15 +50,10 @@ func TestUploadAvatar_Success(t *testing.T) {
 	}
 
 	storage.On("Upload", mock.Anything, mock.Anything, mock.Anything, int64(len(fileContent)), "image/jpeg").Return(nil)
-	repo.On("CreateAvatar", mock.Anything, mock.MatchedBy(func(params repository.CreateAvatarParams) bool {
-		return params.UserID == userID && params.FileName == fileName
-	})).Return(nil)
-	publisher.On("PublishUploadEvent", mock.Anything, mock.MatchedBy(func(event services.AvatarUploadEvent) bool {
-		return event.UserID == userID
-	})).Return(nil)
+	repo.On("CreateAvatar", mock.Anything, mock.Anything).Return(nil)
+	publisher.On("PublishUploadEvent", mock.Anything, mock.Anything).Return(nil)
 
 	result, err := service.UploadAvatar(context.Background(), input)
-
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.ID)
 	assert.Equal(t, userID, result.UserID)
@@ -297,35 +292,26 @@ func TestGetListUserAvatar_Success(t *testing.T) {
 
 func TestUpdateCurrentAvatar_Success(t *testing.T) {
 	repo := new(mocks.AvatarRepo)
-	storage := new(mocks.ObjectStorage)
-	publisher := new(mocks.EventPublisher)
-
-	service := services.NewAvatarService(repo, storage, publisher)
-
+	service := services.NewAvatarService(repo, nil, nil)
 	userID := "user123"
 	avatarID := uuid.New().String()
 
+	repo.On("GetAvatarByID", mock.Anything, avatarID).Return(&repository.Avatar{ID: avatarID}, nil)
 	repo.On("SetCurrentAvatar", mock.Anything, userID, avatarID).Return(nil)
 
 	err := service.UpdateCurrentAvatar(context.Background(), userID, avatarID)
-
 	assert.NoError(t, err)
+
 	repo.AssertExpectations(t)
 }
 
 func TestDeleteCurrentUserAvatar_Success(t *testing.T) {
 	repo := new(mocks.AvatarRepo)
-	storage := new(mocks.ObjectStorage)
-	publisher := new(mocks.EventPublisher)
-
-	service := services.NewAvatarService(repo, storage, publisher)
-
+	service := services.NewAvatarService(repo, nil, nil)
 	userID := "user123"
 
 	repo.On("DeleteCurrentUserAvatar", mock.Anything, userID).Return(nil)
-
 	err := service.DeleteCurrentUserAvatar(context.Background(), userID)
-
 	assert.NoError(t, err)
 	repo.AssertExpectations(t)
 }

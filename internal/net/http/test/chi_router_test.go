@@ -24,7 +24,6 @@ func TestNewRouter(t *testing.T) {
 func TestRouter_APIRoutes(t *testing.T) {
 	mockService := new(mocks.AvatarService)
 	handler := api.NewHandler(nil, mockService)
-
 	router := myHttp.NewRouter(handler, 100)
 
 	tests := []struct {
@@ -39,16 +38,17 @@ func TestRouter_APIRoutes(t *testing.T) {
 			method: http.MethodPost,
 			path:   "/api/v1/avatars",
 			setupMock: func() {
-				mockService.On("UploadAvatar", mock.Anything).Return(nil, nil).Maybe()
+				mockService.On("UploadAvatar", mock.Anything, mock.Anything).
+					Return(&api.AvatarItem{ID: "avatar-id"}, nil)
 			},
-			statusCode: http.StatusBadRequest,
+			statusCode: http.StatusOK,
 		},
 		{
 			name:   "GET /api/v1/users/{user_id}/avatars",
 			method: http.MethodGet,
 			path:   "/api/v1/users/123/avatars",
 			setupMock: func() {
-				mockService.On("GetListUserAvatar", "123").Return([]api.AvatarItem{}, nil).Maybe()
+				mockService.On("GetListUserAvatar", mock.Anything, "123").Return([]api.AvatarItem{}, nil)
 			},
 			statusCode: http.StatusOK,
 		},
@@ -78,7 +78,7 @@ func TestRouter_APIRoutes(t *testing.T) {
 			method: http.MethodDelete,
 			path:   "/api/v1/users/123/avatar",
 			setupMock: func() {
-				mockService.On("DeleteCurrentUserAvatar", "123").Return(nil).Maybe()
+				mockService.On("DeleteCurrentUserAvatar", mock.Anything, "123").Return(nil)
 			},
 			statusCode: http.StatusOK,
 		},
@@ -101,27 +101,21 @@ func TestRouter_APIRoutes(t *testing.T) {
 func TestRouter_NotFound(t *testing.T) {
 	mockService := new(mocks.AvatarService)
 	handler := api.NewHandler(nil, mockService)
-
 	router := myHttp.NewRouter(handler, 100)
 
 	req := httptest.NewRequest(http.MethodGet, "/non-existent-path", nil)
 	rr := httptest.NewRecorder()
-
 	router.ServeHTTP(rr, req)
-
 	assert.Equal(t, http.StatusNotFound, rr.Code)
 }
 
 func TestRouter_MethodNotAllowed(t *testing.T) {
 	mockService := new(mocks.AvatarService)
 	handler := api.NewHandler(nil, mockService)
-
 	router := myHttp.NewRouter(handler, 100)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/avatars/invalid-id", nil)
 	rr := httptest.NewRecorder()
-
 	router.ServeHTTP(rr, req)
-
 	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
 }

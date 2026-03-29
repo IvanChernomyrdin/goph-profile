@@ -1,0 +1,2 @@
+21:09:32 29.03.2026	info	testing/testing.go:1934	test message
+21:09:32 29.03.2026	info	test/zap_test.go:62	HTTP request	{"method": "POST", "uri": "/auth/login", "status": 401, "response_size": 20, "duration_ms": 158.5463}

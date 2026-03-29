@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"goph-profile-avatars/internal/api"
@@ -34,7 +35,7 @@ func TestUpdateCurrentAvatar(t *testing.T) {
 			avatarID: validUUID,
 			userID:   "user123",
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("UpdateCurrentAvatar", "user123", validUUID).Return(nil)
+				m.On("UpdateCurrentAvatar", mock.Anything, "user123", validUUID).Return(nil)
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -67,7 +68,7 @@ func TestUpdateCurrentAvatar(t *testing.T) {
 			avatarID: validUUID,
 			userID:   "user123",
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("UpdateCurrentAvatar", "user123", validUUID).Return(repository.ErrAvatarNotFound)
+				m.On("UpdateCurrentAvatar", mock.Anything, "user123", validUUID).Return(repository.ErrAvatarNotFound)
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedError:  "avatar not found",
@@ -118,7 +119,10 @@ func TestDeleteUserCurrentAvatar(t *testing.T) {
 			name:   "успешное удаление статуса текущего аватара",
 			userID: "user123",
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("DeleteCurrentUserAvatar", "user123").Return(nil)
+				m.On("DeleteCurrentUserAvatar",
+					mock.MatchedBy(func(ctx context.Context) bool { return ctx != nil }),
+					"user123",
+				).Return(nil)
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -138,6 +142,11 @@ func TestDeleteUserCurrentAvatar(t *testing.T) {
 			handler := api.NewHandler(nil, mockSvc)
 
 			req := httptest.NewRequest(http.MethodDelete, "/api/user/"+tt.userID+"/avatar/current", nil)
+
+			// добавляем заголовок X-User-ID, чтобы авторизация прошла
+			if tt.userID != "" {
+				req.Header.Set("X-User-ID", tt.userID)
+			}
 
 			rctx := chi.NewRouteContext()
 			rctx.URLParams.Add("user_id", tt.userID)

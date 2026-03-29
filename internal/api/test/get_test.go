@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"goph-profile-avatars/internal/api"
@@ -34,7 +35,7 @@ func TestGetAvatar(t *testing.T) {
 			avatarID: validUUID,
 			size:     "original",
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("GetAvatarByID", validUUID, "original").Return(&api.GetAvatarResult{
+				m.On("GetAvatarByID", mock.Anything, validUUID, "original").Return(&api.GetAvatarResult{
 					ID:        validUUID,
 					UserID:    "user123",
 					FileName:  "avatar.jpg",
@@ -64,7 +65,7 @@ func TestGetAvatar(t *testing.T) {
 			avatarID: validUUID,
 			size:     "original",
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("GetAvatarByID", validUUID, "original").Return(nil, repository.ErrAvatarNotFound)
+				m.On("GetAvatarByID", mock.Anything, validUUID, "original").Return(nil, repository.ErrAvatarNotFound)
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedError:  "avatar not found",
@@ -124,7 +125,7 @@ func TestGetUserAvatar(t *testing.T) {
 			name:   "успешное получение аватара пользователя",
 			userID: "user123",
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("GetUserAvatar", "user123").Return(&api.GetAvatarResult{
+				m.On("GetUserAvatar", mock.Anything, "user123").Return(&api.GetAvatarResult{
 					ID:        uuid.New().String(),
 					UserID:    "user123",
 					FileName:  "avatar.jpg",
@@ -146,7 +147,7 @@ func TestGetUserAvatar(t *testing.T) {
 			name:   "аватар не найден",
 			userID: "user123",
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("GetUserAvatar", "user123").Return(nil, repository.ErrAvatarNotFound)
+				m.On("GetUserAvatar", mock.Anything, "user123").Return(nil, repository.ErrAvatarNotFound)
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedError:  "avatar not found",
@@ -194,7 +195,7 @@ func TestGetUserAvatars(t *testing.T) {
 			name:   "успешное получение списка аватаров",
 			userID: "user123",
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("GetListUserAvatar", "user123").Return([]api.AvatarItem{}, nil)
+				m.On("GetListUserAvatar", mock.Anything, "user123").Return([]api.AvatarItem{}, nil)
 			},
 			expectedStatus: http.StatusOK,
 		},
