@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GophProfile Avatar Upload</title>
+
+  <link rel="preload" as="image" href="/static/cat-eat.gif" />
+
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+  <div id="pageShell" class="container mx-auto px-4 py-8 max-w-6xl transition-all duration-200">
+    <div class="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
+      <header class="bg-gradient-to-r from-purple-600 to-blue-600 p-6">
+        <h1 class="text-3xl font-bold text-center">GophProfile</h1>
+        <p class="text-white/80 text-center mt-2">Upload, preview, browse and manage user avatars</p>
+      </header>
+
+      <main class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <section class="space-y-6">
+          <div>
+            <h2 class="text-2xl font-semibold mb-4">Upload avatar</h2>
+
+            <form id="uploadForm" class="space-y-4">
+              <div>
+                <label for="userId" class="block text-sm font-medium mb-2">
+                  User ID <span class="text-red-400">*</span>
+                </label>
+                <input type="text" id="userId" name="userId" required placeholder="Enter your user ID"
+                  class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium mb-2">
+                  Choose image <span class="text-red-400">*</span>
+                </label>
+
+                <div id="dropZone"
+                  class="border-2 border-dashed border-white/30 rounded-xl p-6 text-center bg-white/5 hover:bg-white/10 transition cursor-pointer">
+                  <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp,image/gif" required
+                    class="hidden" />
+
+                  <div class="space-y-2">
+                    <p class="text-lg font-medium">Drag & drop image here</p>
+                    <p class="text-white/60 text-sm">or click to choose a file</p>
+                    <button type="button" id="selectFileBtn"
+                      class="inline-flex items-center px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 transition">
+                      Select file
+                    </button>
+                  </div>
+                </div>
+
+                <p id="selectedFileName" class="mt-3 text-sm text-white/70 hidden"></p>
+              </div>
+
+              <!-- Прелоадер для выбранного изображения -->
+              <div id="imagePreviewLoader" class="hidden">
+                <div
+                  class="flex items-center justify-center space-x-3 p-4 bg-white/5 rounded-lg border border-white/10">
+                  <div class="w-8 h-8 border-4 border-white/20 border-t-purple-400 rounded-full animate-spin"></div>
+                  <span class="text-white/70">Loading preview...</span>
+                </div>
+              </div>
+
+              <div id="imagePreview" class="hidden">
+                <p class="text-sm font-medium mb-2">Preview</p>
+                <img id="previewImg" src="" alt="Preview"
+                  class="w-40 h-40 object-cover rounded-xl shadow-lg border border-white/20" />
+              </div>
+
+              <button type="submit" id="submitBtn"
+                class="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                Upload avatar
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <section class="space-y-6">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <h2 class="text-2xl font-semibold">User gallery</h2>
+
+            <button id="loadGalleryBtn" type="button"
+              class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 transition disabled:opacity-50 disabled:cursor-not-allowed">
+              Load gallery
+            </button>
+          </div>
+
+          <div class="bg-white/5 rounded-xl border border-white/10 p-4">
+            <p class="text-sm text-white/70">
+              Enter User ID and click Load gallery to see uploaded avatars.
+            </p>
+          </div>
+
+          <div id="galleryEmpty"
+            class="hidden bg-white/5 border border-white/10 rounded-xl p-6 text-center text-white/70">
+            No avatars found for this user
+          </div>
+
+          <div id="galleryGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Оверлей для длительных операций -->
+  <div id="actionOverlay"
+    class="pointer-events-none opacity-0 fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center px-4 transition-all duration-200">
+    <div class="w-full max-w-md bg-white/10 border border-white/20 rounded-2xl shadow-2xl p-8 text-center">
+      <div id="overlayLoadingBlock" class="space-y-5">
+        <img id="overlayGif" src="/static/cat-eat.gif" alt="Loading"
+          class="w-40 h-40 object-contain mx-auto rounded-xl" />
+
+        <div id="overlayFallbackSpinner"
+          class="hidden w-16 h-16 border-4 border-white/20 border-t-purple-400 rounded-full animate-spin mx-auto"></div>
+
+        <h3 id="overlayTitle" class="text-2xl font-bold text-white">Processing...</h3>
+        <p id="overlayMessage" class="text-white/70">Please wait</p>
+      </div>
+
+      <div id="overlayResultBlock" class="hidden space-y-4">
+        <div id="overlayResultIcon"></div>
+        <h3 id="overlayResultTitle" class="text-2xl font-bold text-white"></h3>
+        <p id="overlayResultMessage" class="text-white/70"></p>
+        <div id="overlayResultBadge" class="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    const userIdInput = document.getElementById('userId');
+    const imageInput = document.getElementById('image');
+    const dropZone = document.getElementById('dropZone');
+    const selectFileBtn = document.getElementById('selectFileBtn');
+    const selectedFileName = document.getElementById('selectedFileName');
+
+    const imagePreviewLoader = document.getElementById('imagePreviewLoader');
+    const imagePreview = document.getElementById('imagePreview');
+    const previewImg = document.getElementById('previewImg');
+
+    const submitBtn = document.getElementById('submitBtn');
+
+    const loadGalleryBtn = document.getElementById('loadGalleryBtn');
+    const galleryEmpty = document.getElementById('galleryEmpty');
+    const galleryGrid = document.getElementById('galleryGrid');
+
+    const pageShell = document.getElementById('pageShell');
+
+    const actionOverlay = document.getElementById('actionOverlay');
+    const overlayLoadingBlock = document.getElementById('overlayLoadingBlock');
+    const overlayResultBlock = document.getElementById('overlayResultBlock');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlayMessage = document.getElementById('overlayMessage');
+    const overlayGif = document.getElementById('overlayGif');
+    const overlayFallbackSpinner = document.getElementById('overlayFallbackSpinner');
+    const overlayResultIcon = document.getElementById('overlayResultIcon');
+    const overlayResultTitle = document.getElementById('overlayResultTitle');
+    const overlayResultMessage = document.getElementById('overlayResultMessage');
+    const overlayResultBadge = document.getElementById('overlayResultBadge');
+
+    let overlayTimer = null;
+    let currentPreviewObjectUrl = null;
+
+    const MIN_OVERLAY_LOADING_MS = 900;
+
+    selectFileBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      imageInput.click();
+    });
+
+    dropZone.addEventListener('click', () => imageInput.click());
+
+    imageInput.addEventListener('change', function () {
+      handleFile(imageInput.files[0]);
+    });
+
+    dropZone.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      dropZone.classList.add('border-purple-400', 'bg-white/10');
+    });
+
+    dropZone.addEventListener('dragleave', function () {
+      dropZone.classList.remove('border-purple-400', 'bg-white/10');
+    });
+
+    dropZone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dropZone.classList.remove('border-purple-400', 'bg-white/10');
+
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        imageInput.files = e.dataTransfer.files;
+        handleFile(file);
+      }
+    });
+
+    overlayGif.addEventListener('error', function () {
+      overlayGif.classList.add('hidden');
+      overlayFallbackSpinner.classList.remove('hidden');
+    });
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      const userId = userIdInput.value.trim();
+      const imageFile = imageInput.files[0];
+
+      if (!userId || !imageFile) {
+        alert('Please fill in all required fields');
+        return;
+      }
+
+      uploadAvatar(userId, imageFile);
+    });
+
+    loadGalleryBtn.addEventListener('click', loadGallery);
+
+    function handleFile(file) {
+      if (!file) {
+        clearPreview();
+        return;
+      }
+
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        clearPreview();
+        return;
+      }
+
+      selectedFileName.textContent = `Selected file: ${file.name} (${formatBytes(file.size)})`;
+      selectedFileName.classList.remove('hidden');
+
+      // Показываем прелоадер
+      imagePreviewLoader.classList.remove('hidden');
+      imagePreview.classList.add('hidden');
+
+      if (currentPreviewObjectUrl) {
+        URL.revokeObjectURL(currentPreviewObjectUrl);
+        currentPreviewObjectUrl = null;
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+      currentPreviewObjectUrl = objectUrl;
+
+      previewImg.onload = function () {
+        // Скрываем прелоадер и показываем превью
+        imagePreviewLoader.classList.add('hidden');
+        imagePreview.classList.remove('hidden');
+      };
+
+      previewImg.onerror = function () {
+        imagePreviewLoader.classList.add('hidden');
+        alert('Failed to render image preview');
+      };
+
+      previewImg.src = objectUrl;
+    }
+
+    function clearPreview() {
+      if (currentPreviewObjectUrl) {
+        URL.revokeObjectURL(currentPreviewObjectUrl);
+        currentPreviewObjectUrl = null;
+      }
+
+      previewImg.onload = null;
+      previewImg.onerror = null;
+      previewImg.removeAttribute('src');
+      imagePreview.classList.add('hidden');
+      imagePreviewLoader.classList.add('hidden');
+      selectedFileName.classList.add('hidden');
+      selectedFileName.textContent = '';
+    }
+
+    function disableUI(disabled) {
+      submitBtn.disabled = disabled;
+      loadGalleryBtn.disabled = disabled;
+      userIdInput.disabled = disabled;
+      imageInput.disabled = disabled;
+    }
+
+    function showOverlayLoading(title, message) {
+      clearTimeout(overlayTimer);
+
+      overlayLoadingBlock.classList.remove('hidden');
+      overlayResultBlock.classList.add('hidden');
+
+      overlayTitle.textContent = title;
+      overlayMessage.textContent = message;
+      overlayResultIcon.innerHTML = '';
+
+      overlayGif.classList.remove('hidden');
+      overlayFallbackSpinner.classList.add('hidden');
+
+      actionOverlay.classList.remove('pointer-events-none', 'opacity-0');
+      actionOverlay.classList.add('pointer-events-auto', 'opacity-100');
+
+      pageShell.classList.add('scale-[0.99]', 'blur-[1px]', 'opacity-80');
+    }
+
+    function getApiErrorMessage(response, data, fallbackText) {
+      if (response && response.status === 429) {
+        return 'Too many requests. Rate limit exceeded. Please try again in a minute.';
+      }
+
+      return data?.details || data?.error || fallbackText;
+    }
+
+    function showOverlayResult(type, title, message, autoHide = true) {
+      overlayLoadingBlock.classList.add('hidden');
+      overlayResultBlock.classList.remove('hidden');
+
+      overlayResultIcon.innerHTML = type === 'success'
+        ? `
+          <div class="mx-auto w-20 h-20 rounded-full bg-green-500/15 border border-green-400/30 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-green-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6 9 17l-5-5"/>
+            </svg>
+          </div>
+        `
+        : `
+          <div class="mx-auto w-20 h-20 rounded-full bg-red-500/15 border border-red-400/30 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-red-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 6 6 18"/>
+              <path d="m6 6 12 12"/>
+            </svg>
+          </div>
+        `;
+
+      overlayResultTitle.textContent = title;
+      overlayResultMessage.textContent = message;
+
+      if (type === 'success') {
+        overlayResultBadge.textContent = 'SUCCESS';
+        overlayResultBadge.className =
+          'inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-green-500/20 border border-green-500/50 text-green-200';
+      } else {
+        overlayResultBadge.textContent = 'FAILED';
+        overlayResultBadge.className =
+          'inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-red-500/20 border border-red-500/50 text-red-200';
+      }
+
+      if (autoHide) {
+        overlayTimer = setTimeout(() => {
+          hideOverlay();
+        }, type === 'success' ? 1200 : 2200);
+      }
+    }
+
+    function hideOverlay() {
+      actionOverlay.classList.remove('pointer-events-auto', 'opacity-100');
+      actionOverlay.classList.add('pointer-events-none', 'opacity-0');
+
+      pageShell.classList.remove('scale-[0.99]', 'blur-[1px]', 'opacity-80');
+    }
+
+    async function runActionWithOverlay(action, options = {}) {
+      const {
+        loadingTitle = 'Processing...',
+        loadingMessage = 'Please wait',
+        successTitle = 'Success',
+        successMessage = 'Operation completed successfully',
+        errorTitle = 'Error',
+        getErrorMessage = null
+      } = options;
+
+      disableUI(true);
+      showOverlayLoading(loadingTitle, loadingMessage);
+
+      const startedAt = Date.now();
+
+      try {
+        const result = await action();
+
+        const elapsed = Date.now() - startedAt;
+        const remaining = Math.max(0, MIN_OVERLAY_LOADING_MS - elapsed);
+
+        if (remaining > 0) {
+          await new Promise(resolve => setTimeout(resolve, remaining));
+        }
+
+        const finalSuccessMessage =
+          typeof successMessage === 'function' ? successMessage(result) : successMessage;
+
+        showOverlayResult('success', successTitle, finalSuccessMessage);
+        return result;
+      } catch (error) {
+        const elapsed = Date.now() - startedAt;
+        const remaining = Math.max(0, MIN_OVERLAY_LOADING_MS - elapsed);
+
+        if (remaining > 0) {
+          await new Promise(resolve => setTimeout(resolve, remaining));
+        }
+
+        const finalErrorMessage = getErrorMessage
+          ? getErrorMessage(error)
+          : (error.message || 'Operation failed');
+
+        showOverlayResult('error', errorTitle, finalErrorMessage);
+        throw error;
+      } finally {
+        disableUI(false);
+      }
+    }
+
+    function uploadAvatar(userId, imageFile) {
+      runActionWithOverlay(
+        () => new Promise((resolve, reject) => {
+          const formData = new FormData();
+          formData.append('file', imageFile);
+
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', '/api/v1/avatars');
+          xhr.setRequestHeader('X-User-ID', userId);
+
+          xhr.upload.onprogress = function (e) {
+            if (e.lengthComputable) {
+              const percent = Math.round((e.loaded / e.total) * 100);
+              overlayMessage.textContent = `Uploading file... ${percent}%`;
+            }
+          };
+
+          xhr.onload = function () {
+            let parsedData;
+            try {
+              parsedData = JSON.parse(xhr.responseText);
+            } catch {
+              parsedData = xhr.responseText;
+            }
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+              loadGallerySilently(userId);
+              resolve({ status: xhr.status, statusText: xhr.statusText, data: parsedData });
+            } else {
+              const details = xhr.status === 429
+                ? 'Too many requests. Rate limit exceeded. Please try again in a minute.'
+                : (parsedData?.details || parsedData?.error || `Server returned ${xhr.status} ${xhr.statusText}`);
+
+              reject(new Error(details));
+            }
+          };
+
+          xhr.onerror = function () {
+            reject(new Error('Network error while uploading file'));
+          };
+
+          xhr.send(formData);
+        }),
+        {
+          loadingTitle: 'Uploading avatar...',
+          loadingMessage: 'Please wait while the file is being sent',
+          successTitle: 'Upload completed',
+          successMessage: 'Avatar uploaded successfully',
+          errorTitle: 'Upload failed'
+        }
+      ).catch(() => { });
+    }
+
+    async function loadGallery() {
+      const userId = userIdInput.value.trim();
+
+      if (!userId) {
+        alert('Enter user ID first to load gallery');
+        return;
+      }
+
+      try {
+        const data = await runActionWithOverlay(
+          () => fetchGallery(userId),
+          {
+            loadingTitle: 'Loading gallery...',
+            loadingMessage: 'Fetching user avatars',
+            successTitle: 'Gallery loaded',
+            successMessage: (items) =>
+              Array.isArray(items) && items.length > 0
+                ? `Found ${items.length} avatar(s)`
+                : 'No avatars found for this user',
+            errorTitle: 'Gallery load failed'
+          }
+        );
+
+        applyGalleryData(data, userId);
+      } catch (_) { }
+    }
+
+    async function loadGallerySilently(userId) {
+      try {
+        const data = await fetchGallery(userId);
+        applyGalleryData(data, userId);
+      } catch (_) { }
+    }
+
+    async function fetchGallery(userId) {
+      const response = await fetch(`/api/v1/users/${encodeURIComponent(userId)}/avatars`);
+      const data = await response.json().catch(() => []);
+
+      if (!response.ok) {
+        throw new Error(
+          getApiErrorMessage(
+            response,
+            data,
+            `Failed to load gallery: ${response.status} ${response.statusText}`
+          )
+        );
+      }
+
+      return data;
+    }
+
+    function applyGalleryData(data, userId) {
+      galleryGrid.innerHTML = '';
+      galleryEmpty.classList.add('hidden');
+
+      if (!Array.isArray(data) || data.length === 0) {
+        galleryEmpty.classList.remove('hidden');
+        return;
+      }
+
+      renderGallery(data, userId);
+    }
+
+    function renderGallery(items, userId) {
+      galleryGrid.innerHTML = '';
+
+      items.forEach((item) => {
+        const card = document.createElement('div');
+        card.className = 'bg-white/5 border border-white/10 rounded-xl overflow-hidden shadow-lg';
+
+        const originalUrl = item.id ? `/api/v1/avatars/${encodeURIComponent(item.id)}` : '';
+        const isCurrent = Boolean(item.is_current);
+
+        const thumb100 = getThumbnailUrl(item, '100x100');
+        const thumb300 = getThumbnailUrl(item, '300x300');
+
+        card.innerHTML = `
+      <div class="aspect-square bg-black/20 flex items-center justify-center overflow-hidden relative">
+        ${originalUrl
+            ? `<img src="${originalUrl}" alt="Avatar" class="w-full h-full object-cover" />`
+            : `<span class="text-white/50 text-sm">No preview</span>`
+          }
+
+        ${isCurrent
+            ? `<div class="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 border border-green-500/50 text-green-200">MAIN</div>`
+            : ''
+          }
+      </div>
+
+      <div class="p-4">
+        <div class="flex gap-2 flex-wrap">
+          <a
+            href="${originalUrl}"
+            target="_blank"
+            class="inline-block px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition text-sm"
+          >
+            Open original
+          </a>
+
+          ${thumb100
+            ? `
+              <a
+                href="${thumb100}"
+                target="_blank"
+                class="inline-block px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 transition text-sm"
+              >
+                Open 100x100
+              </a>
+            `
+            : ''
+          }
+
+          ${thumb300
+            ? `
+              <a
+                href="${thumb300}"
+                target="_blank"
+                class="inline-block px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 transition text-sm"
+              >
+                Open 300x300
+              </a>
+            `
+            : ''
+          }
+
+          <!-- Кнопка удаления для всех аватарок, включая MAIN -->
+          <button
+            type="button"
+            class="inline-block px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition text-sm"
+            data-action="delete-avatar"
+            data-avatar-id="${escapeHtml(item.id || '')}"
+            data-user-id="${escapeHtml(userId || '')}"
+          >
+            Delete
+          </button>
+
+          ${isCurrent
+            ? `
+              <!-- Дополнительная кнопка для удаления именно current (дублирует функционал) -->
+              <button
+                type="button"
+                class="inline-block px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 transition text-sm"
+                data-action="delete-current"
+                data-user-id="${escapeHtml(userId || '')}"
+              >
+                Delete current
+              </button>
+            `
+            : `
+              <button
+                type="button"
+                class="inline-block px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 transition text-sm"
+                data-action="make-current"
+                data-avatar-id="${escapeHtml(item.id || '')}"
+                data-user-id="${escapeHtml(userId || '')}"
+              >
+                Make current
+              </button>
+            `
+          }
+        </div>
+      </div>
+    `;
+
+        galleryGrid.appendChild(card);
+      });
+
+      // Обработчики для всех кнопок
+      galleryGrid.querySelectorAll('[data-action="delete-avatar"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const avatarId = btn.getAttribute('data-avatar-id');
+          const userId = btn.getAttribute('data-user-id');
+          deleteAvatarById(avatarId, userId);
+        });
+      });
+
+      galleryGrid.querySelectorAll('[data-action="delete-current"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const userId = btn.getAttribute('data-user-id');
+          deleteCurrentUserAvatar(userId);
+        });
+      });
+
+      galleryGrid.querySelectorAll('[data-action="make-current"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const avatarId = btn.getAttribute('data-avatar-id');
+          const userId = btn.getAttribute('data-user-id');
+          makeAvatarCurrent(avatarId, userId);
+        });
+      });
+    }
+
+    function getThumbnailUrl(item, size) {
+      if (!item) return '';
+
+      if (item.thumbnail_urls && typeof item.thumbnail_urls === 'object' && item.thumbnail_urls[size]) {
+        return item.thumbnail_urls[size];
+      }
+
+      if (Array.isArray(item.thumbnails)) {
+        const found = item.thumbnails.find(x => x && x.size === size && x.url);
+        if (found) return found.url;
+      }
+
+      let parsedKeys = null;
+      if (item.thumbnail_s3_keys) {
+        try {
+          parsedKeys = typeof item.thumbnail_s3_keys === 'string'
+            ? JSON.parse(item.thumbnail_s3_keys)
+            : item.thumbnail_s3_keys;
+        } catch (_) { }
+      }
+
+      if (parsedKeys && typeof parsedKeys === 'object') {
+        if (Array.isArray(parsedKeys)) {
+          const hasSize = parsedKeys.some(x => {
+            if (typeof x === 'string') return x.includes(size);
+            if (x && typeof x === 'object') return x.size === size || String(x.key || '').includes(size);
+            return false;
+          });
+          if (hasSize && item.id) {
+            return `/api/v1/avatars/${encodeURIComponent(item.id)}?size=${encodeURIComponent(size)}`;
+          }
+        } else if (parsedKeys[size] && item.id) {
+          return `/api/v1/avatars/${encodeURIComponent(item.id)}?size=${encodeURIComponent(size)}`;
+        }
+      }
+
+      return '';
+    }
+
+    async function makeAvatarCurrent(avatarId, userId) {
+      if (!avatarId) {
+        alert('Avatar ID is missing');
+        return;
+      }
+
+      try {
+        await runActionWithOverlay(
+          async () => {
+            const response = await fetch(`/api/v1/avatars/${encodeURIComponent(avatarId)}/current`, {
+              method: 'PATCH',
+              headers: {
+                'X-User-ID': userId
+              }
+            });
+
+            let data = null;
+            try {
+              data = await response.json();
+            } catch (_) { }
+
+            if (!response.ok) {
+              const details = getApiErrorMessage(
+                response,
+                data,
+                `${response.status} ${response.statusText}`
+              );
+              throw new Error(details);
+            }
+
+            return data;
+          },
+          {
+            loadingTitle: 'Updating main avatar...',
+            loadingMessage: 'Please wait while the avatar is being updated',
+            successTitle: 'Main avatar updated',
+            successMessage: 'Avatar is now current',
+            errorTitle: 'Update failed'
+          }
+        );
+
+        await loadGallerySilently(userId || userIdInput.value.trim());
+      } catch (error) {
+        alert(error.message || 'Failed to set current avatar');
+      }
+    }
+    async function deleteAvatarById(avatarId, userId) {
+      if (!avatarId) {
+        alert('Avatar ID is missing');
+        return;
+      }
+
+      if (!userId) {
+        alert('User ID is required');
+        return;
+      }
+
+      const confirmed = window.confirm('Delete avatar?');
+      if (!confirmed) return;
+
+      try {
+        await runActionWithOverlay(
+          async () => {
+            const response = await fetch(`/api/v1/avatars/${encodeURIComponent(avatarId)}`, {
+              method: 'DELETE',
+              headers: {
+                'X-User-ID': userId
+              }
+            });
+
+            let data = null;
+            try {
+              data = await response.json();
+            } catch (_) { }
+
+            if (!response.ok) {
+              const details = getApiErrorMessage(
+                response,
+                data,
+                `${response.status} ${response.statusText}`
+              );
+              throw new Error(details);
+            }
+
+            return data;
+          },
+          {
+            loadingTitle: 'Adding to deletion queue...',
+            loadingMessage: 'Please wait while avatar is being queued for deletion',
+            successTitle: 'Queue updated',
+            successMessage: (data) => {
+              if (data?.status === 'already_queued') {
+                return data?.message || 'Avatar is already in deletion queue';
+              }
+
+              return data?.message || 'Avatar has been added to deletion queue';
+            },
+            errorTitle: 'Failed'
+          }
+        );
+
+        await loadGallerySilently(userId || userIdInput.value.trim());
+      } catch (error) {
+        alert(error.message || 'Failed to delete avatar');
+      }
+    }
+
+    async function deleteCurrentUserAvatar(userId) {
+      if (!userId) {
+        alert('User ID is required');
+        return;
+      }
+
+      const confirmed = window.confirm('Delete current avatar?');
+      if (!confirmed) return;
+
+      try {
+        await runActionWithOverlay(
+          async () => {
+            const response = await fetch(`/api/v1/users/${encodeURIComponent(userId)}/avatar`, {
+              method: 'DELETE',
+              headers: {
+                'X-User-ID': userId
+              }
+            });
+
+            let data = null;
+            try {
+              data = await response.json();
+            } catch (_) { }
+
+            if (!response.ok) {
+              const details = getApiErrorMessage(
+                response,
+                data,
+                `${response.status} ${response.statusText}`
+              );
+              throw new Error(details);
+            }
+
+            return data;
+          },
+          {
+            loadingTitle: 'Adding to deletion queue...',
+            loadingMessage: 'Please wait while avatar is being queued for deletion',
+            successTitle: 'Queue updated',
+            successMessage: (data) => {
+              if (data?.status === 'already_queued') {
+                return data?.message || 'Avatar is already in deletion queue';
+              }
+
+              return data?.message || 'Avatar has been added to deletion queue';
+            },
+            errorTitle: 'Failed'
+          }
+        );
+
+        await loadGallerySilently(userId);
+      } catch (error) {
+        alert(error.message || 'Failed to delete current avatar');
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function formatBytes(bytes) {
+      const value = Number(bytes) || 0;
+      if (value < 1024) return `${value} B`;
+      if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+      return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+    }
+  </script>
+</body>
+
+</html>

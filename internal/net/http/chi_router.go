@@ -1,0 +1,52 @@
+package http
+
+import (
+	"net/http"
+
+	"goph-profile-avatars/internal/api"
+	"goph-profile-avatars/internal/middleware"
+
+	"github.com/go-chi/chi/v5"
+)
+
+func NewRouter(h *api.Handler, rateLimit int) http.Handler {
+	r := chi.NewRouter()
+	// логирование всех запросов
+	r.Use(middleware.LoggerMiddleware())
+
+	//RateLimit 10 rps
+	r.Use(middleware.RateLimitMiddleware(rateLimit))
+
+	// Проверка работоспособности
+	r.Get("/health", h.Health)
+
+	// API v1
+	r.Route("/api/v1", func(r chi.Router) {
+		// Загрузка аватарки
+		r.Post("/avatars", h.UploadAvatar)
+
+		// получение главной аватарки пользователя
+		r.Get("/users/{user_id}/avatar", h.GetUserAvatar)
+		// получение списка аватарок пользователя
+		r.Get("/users/{user_id}/avatars", h.GetUserAvatars)
+		// получение аватарки по ID
+		r.Get("/avatars/{avatar_id}", h.GetAvatar)
+		// установка аватарки на главную
+		r.Patch("/avatars/{avatar_id}/current", h.UpdateCurrentAvatar)
+
+		// удаление аватарки по ID
+		r.Delete("/avatars/{avatar_id}", h.DeleteAvatarByID)
+		// удаление аватарки пользователя с позиции главной
+		r.Delete("/users/{user_id}/avatar", h.DeleteUserCurrentAvatar)
+	})
+
+	// web отрисовка
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./web/static/index.html")
+	})
+	// статика для фронта
+	fileServer := http.FileServer(http.Dir("./web/static"))
+	r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
+
+	return r
+}
