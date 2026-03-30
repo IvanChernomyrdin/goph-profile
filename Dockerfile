@@ -1,4 +1,4 @@
-FROM golang:1.24-alpine AS builder
+FROM golang:1.26.1-alpine AS builder
 
 WORKDIR /app
 
@@ -21,3 +21,7 @@ COPY --from=builder /app/gophprofile-worker /app/gophprofile-worker
 COPY ./configs /app/configs
 COPY ./web /app/web
 COPY ./migrations /app/migrations
+
+EXPOSE 8080
+
+CMD ["/app/gophprofile-server"]

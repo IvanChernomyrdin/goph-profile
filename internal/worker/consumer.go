@@ -57,7 +57,7 @@ func NewRabbitConsumer(
 
 func (c *RabbitConsumer) Run(ctx context.Context) error {
 	if err := c.declareInfrastructure(); err != nil {
-		c.log.Warn("declare rabbitmq infrastructure", "error", err)
+		c.log.Error("declare rabbitmq infrastructure failed", "error", err)
 		return fmt.Errorf("declare rabbitmq infrastructure: %w", err)
 	}
 
@@ -71,7 +71,7 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 		nil,
 	)
 	if err != nil {
-		c.log.Warn("consume message", "error", err)
+		c.log.Error("start upload consumer failed", "error", err)
 		return fmt.Errorf("consume message: %w", err)
 	}
 
@@ -85,7 +85,7 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 		nil,
 	)
 	if err != nil {
-		c.log.Warn("consume delete messages", "error", err)
+		c.log.Error("consume delete messages", "error", err)
 		return fmt.Errorf("consume delete messages: %w", err)
 	}
 
@@ -112,33 +112,46 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 			}
 
 			if err := c.handleUploadMessage(ctx, msg); err != nil {
-				c.log.Error("handle upload message", "error", err)
+				c.log.Error(
+					"handle upload message failed",
+					"error", err,
+					"routing_key", msg.RoutingKey,
+					"message_id", msg.MessageId,
+					"correlation_id", msg.CorrelationId,
+				)
 
 				if nackErr := msg.Nack(false, false); nackErr != nil {
-					c.log.Error("message upload nack", "error", nackErr)
+					c.log.Error("message upload nack failed", "error", nackErr)
 				}
 				continue
 			}
 
 			if err := msg.Ack(false); err != nil {
-				c.log.Error("message upload ack", "error", err)
+				c.log.Error("message upload ack failed", "error", err)
 			}
 		case msg, ok := <-deleteMsgs:
 			if !ok {
+				c.log.Warn("delete consumer channel closed")
 				return fmt.Errorf("delete consumer channel closed")
 			}
 
 			if err := c.handleDeleteMessage(ctx, msg); err != nil {
-				c.log.Error("handle delete message", "error", err)
+				c.log.Error(
+					"handle delete message failed",
+					"error", err,
+					"routing_key", msg.RoutingKey,
+					"message_id", msg.MessageId,
+					"correlation_id", msg.CorrelationId,
+				)
 
 				if nackErr := msg.Nack(false, false); nackErr != nil {
-					c.log.Error("message delete nack", "error", nackErr)
+					c.log.Error("message delete nack failed", "error", nackErr)
 				}
 				continue
 			}
 
 			if err := msg.Ack(false); err != nil {
-				c.log.Error("message delete ack", "error", err)
+				c.log.Error("message delete ack failed", "error", err)
 			}
 		}
 	}
@@ -154,7 +167,6 @@ func (c *RabbitConsumer) declareInfrastructure() error {
 		false,
 		nil,
 	); err != nil {
-		c.log.Error("declare exchange", "error", err)
 		return fmt.Errorf("declare exchange: %w", err)
 	}
 
@@ -167,7 +179,6 @@ func (c *RabbitConsumer) declareInfrastructure() error {
 		nil,
 	)
 	if err != nil {
-		c.log.Error("declare upload queue", "error", err)
 		return fmt.Errorf("declare upload queue: %w", err)
 	}
 
@@ -180,7 +191,6 @@ func (c *RabbitConsumer) declareInfrastructure() error {
 		nil,
 	)
 	if err != nil {
-		c.log.Error("declare delete queue", "error", err)
 		return fmt.Errorf("declare delete queue: %w", err)
 	}
 
@@ -191,7 +201,6 @@ func (c *RabbitConsumer) declareInfrastructure() error {
 		false,
 		nil,
 	); err != nil {
-		c.log.Error("bind upload queue", "error", err)
 		return fmt.Errorf("bind upload queue: %w", err)
 	}
 
@@ -202,12 +211,10 @@ func (c *RabbitConsumer) declareInfrastructure() error {
 		false,
 		nil,
 	); err != nil {
-		c.log.Error("bind delete queue", "error", err)
 		return fmt.Errorf("bind delete queue: %w", err)
 	}
 
 	if err := c.ch.Qos(1, 0, false); err != nil {
-		c.log.Error("set qos", "error", err)
 		return fmt.Errorf("set qos: %w", err)
 	}
 
@@ -222,35 +229,36 @@ func (c *RabbitConsumer) handleUploadMessage(ctx context.Context, msg amqp.Deliv
 	}
 
 	if event.AvatarID == "" {
-		c.log.Error("empty avatar_id")
 		return fmt.Errorf("empty avatar_id")
 	}
 	if event.S3Key == "" {
-		c.log.Error("empty s3_key")
 		return fmt.Errorf("empty s3_key")
 	}
 	if event.UserID == "" {
-		c.log.Error("empty user_id")
 		return fmt.Errorf("empty user_id")
 	}
 
-	c.log.Info("received upload event",
+	c.log.Info(
+		"received upload event",
 		"avatar_id", event.AvatarID,
 		"user_id", event.UserID,
 		"s3_key", event.S3Key,
+		"routing_key", msg.RoutingKey,
+		"message_id", msg.MessageId,
+		"correlation_id", msg.CorrelationId,
 	)
 
 	msgCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
 	if err := c.uploadHandler.HandleUpload(msgCtx, event); err != nil {
-		c.log.Warn("handle upload event", "error", err)
 		return fmt.Errorf("handle upload event: %w", err)
 	}
 
 	c.log.Info("upload event processed successfully", "avatar_id", event.AvatarID)
 	return nil
 }
+
 func (c *RabbitConsumer) handleDeleteMessage(ctx context.Context, msg amqp.Delivery) error {
 	var event AvatarDeleteEvent
 
@@ -273,9 +281,15 @@ func (c *RabbitConsumer) handleDeleteMessage(ctx context.Context, msg amqp.Deliv
 		"avatar_id", event.AvatarID,
 		"user_id", event.UserID,
 		"s3_key", event.S3Key,
+		"routing_key", msg.RoutingKey,
+		"message_id", msg.MessageId,
+		"correlation_id", msg.CorrelationId,
 	)
 
-	if err := c.deleteHandler.HandleDelete(ctx, event); err != nil {
+	msgCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	if err := c.deleteHandler.HandleDelete(msgCtx, event); err != nil {
 		return fmt.Errorf("handle delete event: %w", err)
 	}
 

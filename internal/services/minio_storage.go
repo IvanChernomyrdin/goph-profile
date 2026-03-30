@@ -10,6 +10,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )
 
@@ -35,6 +36,14 @@ func NewMinIOStorage(client MinioClientInterface, bucket string) *MinIOStorage {
 func (s *MinIOStorage) Upload(ctx context.Context, key string, body io.Reader, size int64, contentType string) error {
 	ctx, span := otel.Tracer("avatars-service/minio-storage").Start(ctx, "upload")
 	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("storage.system", "minio"),
+		attribute.String("bucket.name", s.bucket),
+		attribute.String("object.key", key),
+		attribute.Int64("object.size", size),
+		attribute.String("content_type", contentType),
+	)
 
 	start := time.Now()
 	logger := slog.With("service", "minio-storage", "key", key, "trace_id", span.SpanContext().TraceID())
@@ -69,6 +78,12 @@ type DownloadResult struct {
 func (s *MinIOStorage) Download(ctx context.Context, key string) (*DownloadResult, error) {
 	ctx, span := otel.Tracer("avatars-service/minio-storage").Start(ctx, "download")
 	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("storage.system", "minio"),
+		attribute.String("bucket.name", s.bucket),
+		attribute.String("object.key", key),
+	)
 
 	start := time.Now()
 	logger := slog.With("service", "minio-storage", "key", key, "trace_id", span.SpanContext().TraceID())
@@ -110,6 +125,12 @@ func (s *MinIOStorage) Download(ctx context.Context, key string) (*DownloadResul
 func (s *MinIOStorage) Delete(ctx context.Context, objectKey string) error {
 	ctx, span := otel.Tracer("avatars-service/minio-storage").Start(ctx, "delete")
 	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("storage.system", "minio"),
+		attribute.String("bucket.name", s.bucket),
+		attribute.String("object.key", objectKey),
+	)
 
 	logger := slog.With("service", "minio-storage", "key", objectKey, "trace_id", span.SpanContext().TraceID())
 

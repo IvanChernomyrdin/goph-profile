@@ -6,22 +6,25 @@ import (
 	"goph-profile-avatars/internal/api"
 	"goph-profile-avatars/internal/middleware"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/go-chi/chi/v5"
 )
 
 func NewRouter(h *api.Handler, rateLimit int) http.Handler {
 	r := chi.NewRouter()
-	// логирование всех запросов
+	// observability
+	r.Use(middleware.TracingMiddleware("gophprofile-http"))
 	r.Use(middleware.LoggerMiddleware())
-
-	//RateLimit 10 rps
-	r.Use(middleware.RateLimitMiddleware(rateLimit))
+	r.Get("/metrics", promhttp.Handler().ServeHTTP)
 
 	// Проверка работоспособности
 	r.Get("/health", h.Health)
 
 	// API v1
 	r.Route("/api/v1", func(r chi.Router) {
+		// rate limit
+		r.Use(middleware.RateLimitMiddleware(rateLimit))
 		// Загрузка аватарки
 		r.Post("/avatars", h.UploadAvatar)
 

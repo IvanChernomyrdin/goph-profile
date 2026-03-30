@@ -5,7 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 type AvatarRepository struct {
@@ -57,7 +62,30 @@ func NewAvatarRepository(db *sql.DB) *AvatarRepository {
 	return &AvatarRepository{db: db}
 }
 
+func repoLogger(ctx context.Context, operation string) *slog.Logger {
+	return slog.Default().With(
+		"component", "avatar-repository",
+		"operation", operation,
+	)
+}
+
 func (r *AvatarRepository) CreateAvatar(ctx context.Context, avatar CreateAvatarParams) error {
+	ctx, span := otel.Tracer("avatars-repository").Start(ctx, "avatars.insert")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "INSERT"),
+		attribute.String("db.sql.table", "avatars"),
+		attribute.String("avatar.id", avatar.ID),
+		attribute.String("user.id", avatar.UserID),
+	)
+
+	logger := repoLogger(ctx, "CreateAvatar").With(
+		"avatar_id", avatar.ID,
+		"user_id", avatar.UserID,
+	)
+
 	const query = `
 		INSERT INTO avatars (
 			id,
@@ -87,12 +115,34 @@ func (r *AvatarRepository) CreateAvatar(ctx context.Context, avatar CreateAvatar
 		avatar.ProcessingStatus,
 	)
 
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "insert avatar failed")
+		logger.Error("failed to insert avatar", "error", err)
+		return err
+	}
+
+	logger.Info("avatar inserted successfully")
+
 	return err
 }
 
 // GetAvatarByID получает запись аватара по ID.
 // Удалённые записи сразу исключаем.
 func (r *AvatarRepository) GetAvatarByID(ctx context.Context, avatarID string) (*Avatar, error) {
+	ctx, span := otel.Tracer("avatars-repository").Start(ctx, "avatars.select_by_id")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "SELECT"),
+		attribute.String("db.sql.table", "avatars"),
+		attribute.String("avatar.id", avatarID),
+	)
+
+	logger := repoLogger(ctx, "GetAvatarByID").With(
+		"avatar_id", avatarID,
+	)
 	const query = `
 		SELECT
 			id,
@@ -129,16 +179,36 @@ func (r *AvatarRepository) GetAvatarByID(ctx context.Context, avatarID string) (
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			logger.Warn("avatar not found")
 			return nil, ErrAvatarNotFound
 		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "select avatar failed")
+		logger.Error("failed to select avatar", "error", err)
 		return nil, err
 	}
 
+	logger.Info("avatar selected successfully")
 	return &avatar, nil
 }
 
 // UpdateProcessingStatus обновляет только processing_status.
 func (r *AvatarRepository) UpdateProcessingStatus(ctx context.Context, avatarID, status string) error {
+	ctx, span := otel.Tracer("avatars-repository").Start(ctx, "avatars.update_processing_status")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "UPDATE"),
+		attribute.String("db.sql.table", "avatars"),
+		attribute.String("avatar.id", avatarID),
+		attribute.String("processing.status", status),
+	)
+
+	logger := repoLogger(ctx, "UpdateProcessingStatus").With(
+		"avatar_id", avatarID,
+		"processing_status", status,
+	)
 	const query = `
 		UPDATE avatars
 		SET
@@ -149,7 +219,15 @@ func (r *AvatarRepository) UpdateProcessingStatus(ctx context.Context, avatarID,
 	`
 
 	_, err := r.db.ExecContext(ctx, query, avatarID, status)
-	return err
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "update processing status failed")
+		logger.Error("failed to update processing status", "error", err)
+		return err
+	}
+
+	logger.Info("processing status updated successfully")
+	return nil
 }
 
 // CompleteProcessing записывает ключи миниатюр и ставит completed.
@@ -170,6 +248,20 @@ func (r *AvatarRepository) CompleteProcessing(ctx context.Context, avatarID stri
 
 // FailProcessing ставит failed.
 func (r *AvatarRepository) FailProcessing(ctx context.Context, avatarID string) error {
+	ctx, span := otel.Tracer("avatars-repository").Start(ctx, "avatars.fail_processing")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "UPDATE"),
+		attribute.String("db.sql.table", "avatars"),
+		attribute.String("avatar.id", avatarID),
+	)
+
+	logger := repoLogger(ctx, "FailProcessing").With(
+		"avatar_id", avatarID,
+	)
+
 	const query = `
 		UPDATE avatars
 		SET
@@ -180,11 +272,33 @@ func (r *AvatarRepository) FailProcessing(ctx context.Context, avatarID string) 
 	`
 
 	_, err := r.db.ExecContext(ctx, query, avatarID)
-	return err
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "fail processing update failed")
+		logger.Error("failed to set failed processing status", "error", err)
+		return err
+	}
+
+	logger.Info("processing marked as failed")
+	return nil
 }
 
 // получение главной аватарки пользователя
 func (r *AvatarRepository) GetUserAvatar(ctx context.Context, userID string) (*Avatar, error) {
+	ctx, span := otel.Tracer("avatars-repository").Start(ctx, "avatars.select_user_current")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "SELECT"),
+		attribute.String("db.sql.table", "avatars"),
+		attribute.String("user.id", userID),
+	)
+
+	logger := repoLogger(ctx, "GetUserAvatar").With(
+		"user_id", userID,
+	)
+
 	const query = `
 		SELECT
 			id,
@@ -225,11 +339,16 @@ func (r *AvatarRepository) GetUserAvatar(ctx context.Context, userID string) (*A
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			logger.Warn("current user avatar not found")
 			return nil, ErrAvatarNotFound
 		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "select current user avatar failed")
+		logger.Error("failed to select current user avatar", "error", err)
 		return nil, err
 	}
 
+	logger.Info("current user avatar selected successfully", "avatar_id", avatar.ID)
 	return &avatar, nil
 }
 
@@ -295,14 +414,33 @@ func (r *AvatarRepository) GetListUserAvatar(ctx context.Context, userID string)
 
 // проверка, сброс всех и обновление у выставление нужной аватарки у пользователя в качестве главной
 func (r *AvatarRepository) SetCurrentAvatar(ctx context.Context, userID, avatarID string) error {
+	ctx, span := otel.Tracer("avatars-repository").Start(ctx, "avatars.set_current")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "UPDATE"),
+		attribute.String("db.sql.table", "avatars"),
+		attribute.String("avatar.id", avatarID),
+		attribute.String("user.id", userID),
+	)
+
+	logger := repoLogger(ctx, "SetCurrentAvatar").With(
+		"avatar_id", avatarID,
+		"user_id", userID,
+	)
+
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "begin transaction failed")
+		logger.Error("failed to begin transaction", "error", err)
 		return err
 	}
 	defer func() {
 		_ = tx.Rollback()
 	}()
-	// Проверяем, что такая аватарка вообще есть у этого пользователя и не удалена
+
 	const checkQuery = `
 		SELECT 1
 		FROM avatars
@@ -314,12 +452,15 @@ func (r *AvatarRepository) SetCurrentAvatar(ctx context.Context, userID, avatarI
 	var exists int
 	if err := tx.QueryRowContext(ctx, checkQuery, avatarID, userID).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			logger.Warn("avatar not found for user")
 			return ErrAvatarNotFound
 		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "check avatar ownership failed")
+		logger.Error("failed to check avatar ownership", "error", err)
 		return err
 	}
 
-	// Снимаем current у всех аватарок пользователя
 	const resetQuery = `
 		UPDATE avatars
 		SET
@@ -331,10 +472,12 @@ func (r *AvatarRepository) SetCurrentAvatar(ctx context.Context, userID, avatarI
 	`
 
 	if _, err := tx.ExecContext(ctx, resetQuery, userID); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "reset current avatar failed")
+		logger.Error("failed to reset current avatar", "error", err)
 		return err
 	}
 
-	// Ставим current у выбранной аватарки
 	const setQuery = `
 		UPDATE avatars
 		SET
@@ -347,21 +490,50 @@ func (r *AvatarRepository) SetCurrentAvatar(ctx context.Context, userID, avatarI
 
 	result, err := tx.ExecContext(ctx, setQuery, avatarID, userID)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "set current avatar failed")
+		logger.Error("failed to set current avatar", "error", err)
 		return err
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "rows affected failed")
+		logger.Error("failed to get rows affected", "error", err)
 		return err
 	}
 	if rowsAffected == 0 {
+		logger.Warn("avatar not found after update")
 		return ErrAvatarNotFound
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "commit transaction failed")
+		logger.Error("failed to commit transaction", "error", err)
+		return err
+	}
+
+	logger.Info("current avatar updated successfully")
+	return nil
 }
 
 func (r *AvatarRepository) DeleteCurrentUserAvatar(ctx context.Context, userID string) error {
+	ctx, span := otel.Tracer("avatars-repository").Start(ctx, "avatars.delete_current_flag")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "UPDATE"),
+		attribute.String("db.sql.table", "avatars"),
+		attribute.String("user.id", userID),
+	)
+
+	logger := repoLogger(ctx, "DeleteCurrentUserAvatar").With(
+		"user_id", userID,
+	)
+
 	const query = `
 		UPDATE avatars
 		SET is_current = FALSE
@@ -372,13 +544,32 @@ func (r *AvatarRepository) DeleteCurrentUserAvatar(ctx context.Context, userID s
 
 	_, err := r.db.ExecContext(ctx, query, userID)
 	if err != nil {
-		return fmt.Errorf("update current avatar: %w", err)
+		wrappedErr := fmt.Errorf("update current avatar: %w", err)
+		span.RecordError(wrappedErr)
+		span.SetStatus(codes.Error, "delete current avatar failed")
+		logger.Error("failed to delete current avatar flag", "error", wrappedErr)
+		return wrappedErr
 	}
 
+	logger.Info("current avatar flag removed successfully")
 	return nil
 }
 
 func (r *AvatarRepository) SoftDeleteAvatar(ctx context.Context, avatarID string) error {
+	ctx, span := otel.Tracer("avatars-repository").Start(ctx, "avatars.soft_delete")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "UPDATE"),
+		attribute.String("db.sql.table", "avatars"),
+		attribute.String("avatar.id", avatarID),
+	)
+
+	logger := repoLogger(ctx, "SoftDeleteAvatar").With(
+		"avatar_id", avatarID,
+	)
+
 	const query = `
 		UPDATE avatars
 		SET
@@ -391,8 +582,13 @@ func (r *AvatarRepository) SoftDeleteAvatar(ctx context.Context, avatarID string
 
 	_, err := r.db.ExecContext(ctx, query, avatarID)
 	if err != nil {
-		return fmt.Errorf("soft delete avatar: %w", err)
+		wrappedErr := fmt.Errorf("soft delete avatar: %w", err)
+		span.RecordError(wrappedErr)
+		span.SetStatus(codes.Error, "soft delete failed")
+		logger.Error("failed to soft delete avatar", "error", wrappedErr)
+		return wrappedErr
 	}
 
+	logger.Info("avatar soft deleted successfully")
 	return nil
 }

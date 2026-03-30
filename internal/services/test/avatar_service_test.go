@@ -296,7 +296,7 @@ func TestUpdateCurrentAvatar_Success(t *testing.T) {
 	userID := "user123"
 	avatarID := uuid.New().String()
 
-	repo.On("GetAvatarByID", mock.Anything, avatarID).Return(&repository.Avatar{ID: avatarID}, nil)
+	repo.On("GetAvatarByID", mock.Anything, avatarID).Return(&repository.Avatar{ID: avatarID, UserID: userID}, nil)
 	repo.On("SetCurrentAvatar", mock.Anything, userID, avatarID).Return(nil)
 
 	err := service.UpdateCurrentAvatar(context.Background(), userID, avatarID)

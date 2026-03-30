@@ -46,15 +46,20 @@ func TestRabbitPublisher_PublishUploadEvent_Success(t *testing.T) {
 		S3Key:    "avatars/user-456/avatar-123.jpg",
 	}
 
-	expectedBody, err := json.Marshal(event)
-	assert.NoError(t, err)
+	mockCh.On(
+		"PublishWithContext",
+		mock.Anything,
+		"test-exchange",
+		"upload.key",
+		false,
+		false,
+		mock.MatchedBy(func(p amqp.Publishing) bool {
+			return p.ContentType == "application/json" &&
+				string(p.Body) == `{"avatar_id":"avatar-123","user_id":"user-456","s3_key":"avatars/user-456/avatar-123.jpg"}`
+		}),
+	).Return(nil)
 
-	mockCh.On("PublishWithContext", ctx, "test-exchange", "upload.key", false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        expectedBody,
-	}).Return(nil)
-
-	err = publisher.PublishUploadEvent(ctx, event)
+	err := publisher.PublishUploadEvent(ctx, event)
 
 	assert.NoError(t, err)
 	mockCh.AssertExpectations(t)
@@ -75,15 +80,24 @@ func TestRabbitPublisher_PublishUploadEvent_PublishError(t *testing.T) {
 	assert.NoError(t, err)
 
 	expectedErr := errors.New("publish failed")
-	mockCh.On("PublishWithContext", ctx, "test-exchange", "upload.key", false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        expectedBody,
-	}).Return(expectedErr)
+
+	mockCh.On(
+		"PublishWithContext",
+		mock.Anything,
+		"test-exchange",
+		"upload.key",
+		false,
+		false,
+		mock.MatchedBy(func(p amqp.Publishing) bool {
+			return p.ContentType == "application/json" &&
+				string(p.Body) == string(expectedBody)
+		}),
+	).Return(expectedErr)
 
 	err = publisher.PublishUploadEvent(ctx, event)
 
 	assert.Error(t, err)
-	assert.Equal(t, expectedErr, err)
+	assert.ErrorIs(t, err, expectedErr)
 	mockCh.AssertExpectations(t)
 }
 
@@ -101,10 +115,18 @@ func TestRabbitPublisher_PublishDeleteEvent_Success(t *testing.T) {
 	expectedBody, err := json.Marshal(event)
 	assert.NoError(t, err)
 
-	mockCh.On("PublishWithContext", ctx, "test-exchange", "delete.key", false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        expectedBody,
-	}).Return(nil)
+	mockCh.On(
+		"PublishWithContext",
+		mock.Anything,
+		"test-exchange",
+		"delete.key",
+		false,
+		false,
+		mock.MatchedBy(func(p amqp.Publishing) bool {
+			return p.ContentType == "application/json" &&
+				string(p.Body) == string(expectedBody)
+		}),
+	).Return(nil)
 
 	err = publisher.PublishDeleteEvent(ctx, event)
 
@@ -127,15 +149,24 @@ func TestRabbitPublisher_PublishDeleteEvent_PublishError(t *testing.T) {
 	assert.NoError(t, err)
 
 	expectedErr := errors.New("publish failed")
-	mockCh.On("PublishWithContext", ctx, "test-exchange", "delete.key", false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        expectedBody,
-	}).Return(expectedErr)
+
+	mockCh.On(
+		"PublishWithContext",
+		mock.Anything,
+		"test-exchange",
+		"delete.key",
+		false,
+		false,
+		mock.MatchedBy(func(p amqp.Publishing) bool {
+			return p.ContentType == "application/json" &&
+				string(p.Body) == string(expectedBody)
+		}),
+	).Return(expectedErr)
 
 	err = publisher.PublishDeleteEvent(ctx, event)
 
 	assert.Error(t, err)
-	assert.Equal(t, expectedErr, err)
+	assert.ErrorIs(t, err, expectedErr)
 	mockCh.AssertExpectations(t)
 }
 
@@ -152,12 +183,27 @@ func TestRabbitPublisher_PublishUploadEvent_WithCanceledContext(t *testing.T) {
 		S3Key:    "avatars/user-456/avatar-123.jpg",
 	}
 
-	expectedErr := context.Canceled
-	mockCh.On("PublishWithContext", ctx, "test-exchange", "upload.key", false, false, mock.Anything).Return(expectedErr)
+	expectedBody, err := json.Marshal(event)
+	assert.NoError(t, err)
 
-	err := publisher.PublishUploadEvent(ctx, event)
+	expectedErr := context.Canceled
+
+	mockCh.On(
+		"PublishWithContext",
+		mock.Anything,
+		"test-exchange",
+		"upload.key",
+		false,
+		false,
+		mock.MatchedBy(func(p amqp.Publishing) bool {
+			return p.ContentType == "application/json" &&
+				string(p.Body) == string(expectedBody)
+		}),
+	).Return(expectedErr)
+
+	err = publisher.PublishUploadEvent(ctx, event)
 
 	assert.Error(t, err)
-	assert.Equal(t, expectedErr, err)
+	assert.ErrorIs(t, err, expectedErr)
 	mockCh.AssertExpectations(t)
 }

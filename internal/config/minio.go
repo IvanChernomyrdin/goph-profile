@@ -3,9 +3,8 @@ package config
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
-
-	logger "goph-profile-avatars/internal/logging"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -14,7 +13,11 @@ import (
 var minioClient *minio.Client
 
 func MinIOAWSInit(cfg S3Config) error {
-	customLog := logger.NewHTTPLogger().Sugar()
+	logger := slog.Default().With(
+		"component", "minio-init",
+		"endpoint", cfg.Endpoint,
+		"bucket", cfg.Bucket,
+	)
 
 	client, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
@@ -22,7 +25,7 @@ func MinIOAWSInit(cfg S3Config) error {
 		Region: cfg.Region,
 	})
 	if err != nil {
-		customLog.Errorf("failed to init minio client: %v", err)
+		logger.Error("failed to init minio", "error", err)
 		return fmt.Errorf("init minio client: %w", err)
 	}
 
@@ -33,7 +36,7 @@ func MinIOAWSInit(cfg S3Config) error {
 	// Проверяем, существует ли bucket.
 	exists, err := client.BucketExists(ctx, cfg.Bucket)
 	if err != nil {
-		customLog.Errorf("failed to check bucket %q: %v", cfg.Bucket, err)
+		logger.Error("failed to check", "bucket", cfg.Bucket, "error", err)
 		return fmt.Errorf("check bucket exists: %w", err)
 	}
 
@@ -43,17 +46,17 @@ func MinIOAWSInit(cfg S3Config) error {
 			Region: cfg.Region,
 		})
 		if err != nil {
-			customLog.Errorf("failed to create bucket %q: %v", cfg.Bucket, err)
+			logger.Error("failed to create bucket", "bucket", cfg.Bucket, "error", err)
 			return fmt.Errorf("create bucket: %w", err)
 		}
 
-		customLog.Infof("minio bucket %q created successfully", cfg.Bucket)
+		logger.Info("minio bucket created successfully", "bucked", cfg.Bucket)
 	} else {
-		customLog.Infof("minio bucket %q already exists", cfg.Bucket)
+		logger.Info("minio bucket already exists", "bucked", cfg.Bucket)
 	}
 
 	minioClient = client
-	customLog.Info("minio connected successfully")
+	logger.Info("minio connected successfully")
 
 	return nil
 }

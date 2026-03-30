@@ -15,7 +15,6 @@ import (
 	"goph-profile-avatars/internal/services"
 )
 
-// AvatarRepositoryInterface интерфейс для репозитория аватаров
 type AvatarRepositoryInterface interface {
 	GetAvatarByID(ctx context.Context, avatarID string) (*repository.Avatar, error)
 	UpdateProcessingStatus(ctx context.Context, avatarID, status string) error
@@ -24,7 +23,6 @@ type AvatarRepositoryInterface interface {
 	SoftDeleteAvatar(ctx context.Context, avatarID string) error
 }
 
-// StorageInterface интерфейс для хранилища
 type StorageInterface interface {
 	Download(ctx context.Context, key string) (*services.DownloadResult, error)
 	Upload(ctx context.Context, key string, body io.Reader, size int64, contentType string) error
@@ -49,24 +47,20 @@ func NewAvatarWorkerService(
 	}
 }
 
-// HandleUpload:
-// 1. достаёт запись из БД
-// 2. проверяет статус
-// 3. ставит processing
-// 4. скачивает оригинал из MinIO
-// 5. создаёт 100x100 и 300x300
-// 6. загружает их в MinIO
-// 7. обновляет БД в completed
 func (s *Service) HandleUpload(ctx context.Context, event AvatarUploadEvent) error {
-	s.log.Info("Processing avatar", "avatar_id", event.AvatarID)
+	s.log.Info("handle upload started", "avatar_id", event.AvatarID)
 
 	avatar, err := s.avatarRepo.GetAvatarByID(ctx, event.AvatarID)
 	if err != nil {
 		return fmt.Errorf("get avatar by id: %w", err)
 	}
 
-	if avatar.ProcessingStatus == "completed" {
+	switch avatar.ProcessingStatus {
+	case "completed":
 		s.log.Info("avatar already completed", "avatar_id", avatar.ID)
+		return nil
+	case "processing":
+		s.log.Info("avatar already processing", "avatar_id", avatar.ID)
 		return nil
 	}
 
@@ -75,9 +69,12 @@ func (s *Service) HandleUpload(ctx context.Context, event AvatarUploadEvent) err
 	}
 
 	if err := s.processAvatar(ctx, avatar); err != nil {
-		failErr := s.avatarRepo.FailProcessing(ctx, avatar.ID)
-		if failErr != nil {
-			s.log.Error("failed to set failed status", "avatar_id", avatar.ID, "error", failErr)
+		if failErr := s.avatarRepo.FailProcessing(ctx, avatar.ID); failErr != nil {
+			s.log.Error(
+				"set failed processing status failed",
+				"avatar_id", avatar.ID,
+				"error", failErr,
+			)
 		}
 		return err
 	}
@@ -113,7 +110,7 @@ func (s *Service) HandleDelete(ctx context.Context, event AvatarDeleteEvent) err
 func (s *Service) processAvatar(ctx context.Context, avatar *repository.Avatar) error {
 	downloaded, err := s.storage.Download(ctx, avatar.S3Key)
 	if err != nil {
-		return fmt.Errorf("download original from minio: %w", err)
+		return fmt.Errorf("download original from storage: %w", err)
 	}
 	defer func() {
 		_ = downloaded.Reader.Close()
@@ -143,7 +140,6 @@ func (s *Service) processAvatar(ctx context.Context, avatar *repository.Avatar) 
 	}
 
 	baseDir := path.Dir(avatar.S3Key)
-
 	thumb100Key := fmt.Sprintf("%s/100x100.jpg", baseDir)
 	thumb300Key := fmt.Sprintf("%s/300x300.jpg", baseDir)
 

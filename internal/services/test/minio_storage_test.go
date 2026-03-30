@@ -54,7 +54,7 @@ func TestMinIOStorage_Upload_Success(t *testing.T) {
 	size := int64(10)
 	contentType := "image/jpeg"
 
-	mockClient.On("PutObject", ctx, "test-bucket", key, body, size, minio.PutObjectOptions{
+	mockClient.On("PutObject", mock.Anything, "test-bucket", key, body, size, minio.PutObjectOptions{
 		ContentType: contentType,
 	}).Return(minio.UploadInfo{}, nil)
 
@@ -75,14 +75,15 @@ func TestMinIOStorage_Upload_Error(t *testing.T) {
 	contentType := "image/jpeg"
 
 	expectedErr := errors.New("upload failed")
-	mockClient.On("PutObject", ctx, "test-bucket", key, body, size, minio.PutObjectOptions{
+	mockClient.On("PutObject", mock.Anything, "test-bucket", key, body, size, minio.PutObjectOptions{
 		ContentType: contentType,
 	}).Return(minio.UploadInfo{}, expectedErr)
 
 	err := storage.Upload(ctx, key, body, size, contentType)
 
 	assert.Error(t, err)
-	assert.Equal(t, expectedErr, err)
+	assert.ErrorIs(t, err, expectedErr)
+	assert.Contains(t, err.Error(), "upload object")
 	mockClient.AssertExpectations(t)
 }
 
@@ -93,7 +94,7 @@ func TestMinIOStorage_Delete_Success(t *testing.T) {
 	ctx := context.Background()
 	key := "avatars/user123/avatar.jpg"
 
-	mockClient.On("RemoveObject", ctx, "test-bucket", key, minio.RemoveObjectOptions{}).Return(nil)
+	mockClient.On("RemoveObject", mock.Anything, "test-bucket", key, minio.RemoveObjectOptions{}).Return(nil)
 
 	err := storage.Delete(ctx, key)
 
@@ -109,7 +110,7 @@ func TestMinIOStorage_Delete_Error(t *testing.T) {
 	key := "avatars/user123/avatar.jpg"
 
 	expectedErr := errors.New("delete failed")
-	mockClient.On("RemoveObject", ctx, "test-bucket", key, minio.RemoveObjectOptions{}).Return(expectedErr)
+	mockClient.On("RemoveObject", mock.Anything, "test-bucket", key, minio.RemoveObjectOptions{}).Return(expectedErr)
 
 	err := storage.Delete(ctx, key)
 

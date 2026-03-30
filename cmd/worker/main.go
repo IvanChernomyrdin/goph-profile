@@ -17,9 +17,14 @@ func main() {
 	ctx := context.Background()
 
 	// Инициализация slog + OTEL
-	log, otelShutdown := logging.InitLoggerProvider(ctx)
-	defer otelShutdown()
-	log.Info("Starting gophprofile worker...")
+	logger, shutdownObservability := logging.InitObservability(
+		ctx,
+		"gophprofile-worker",
+		"1.0.0",
+	)
+	defer shutdownObservability()
+
+	logger.Info("starting gophprofile worker")
 
 	// подключаем переменные окружения для воркера
 	configPath := os.Getenv("CONFIG_PATH")
@@ -29,30 +34,32 @@ func main() {
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		log.Error("failed to load config", "error", err)
+		logger.Error("failed to load config", "error", err, "config_path", configPath)
 		return
 	}
 
+	logger.Info("worker config loaded", "config_path", configPath)
+
 	// подключаем PostgreSQL
 	if err := config.PostgresInit(cfg.Postgres.DSN); err != nil {
-		log.Error("failed to init Postgres", "error", err)
+		logger.Error("failed to init Postgres", "error", err)
 		return
 	}
 
 	// подключаем MinIO / S3
 	if err := config.MinIOAWSInit(cfg.S3); err != nil {
-		log.Error("failed to init MinIO/S3", "error", err)
+		logger.Error("failed to init MinIO/S3", "error", err)
 		return
 	}
 
 	// подключаем RabbitMQ
 	if err := config.RabbitMQInit(cfg.RabbitMQ); err != nil {
-		log.Error("failed to init RabbitMQ", "error", err)
+		logger.Error("failed to init RabbitMQ", "error", err)
 		return
 	}
 	defer func() {
 		if err := config.CloseRabbitMQ(); err != nil {
-			log.Error("rabbitmq close error", "error", err)
+			logger.Error("rabbitmq close error", "error", err)
 		}
 	}()
 
@@ -64,7 +71,7 @@ func main() {
 	avatarWorkerService := worker.NewAvatarWorkerService(
 		avatarRepo,
 		storage,
-		log,
+		logger,
 	)
 
 	// consumer RabbitMQ
@@ -73,22 +80,22 @@ func main() {
 		cfg.RabbitMQ,
 		avatarWorkerService,
 		avatarWorkerService,
-		log,
+		logger,
 	)
 
 	// graceful shutdown
 	ctxShutdown, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	log.Info(
+	logger.Info(
 		"worker started",
 		"upload_queue", cfg.RabbitMQ.QueueUpload,
 		"delete_queue", cfg.RabbitMQ.QueueDelete,
 	)
 
 	if err := consumer.Run(ctxShutdown); err != nil {
-		log.Error("consumer run error", "error", err)
+		logger.Error("consumer run error", "error", err)
 	}
 
-	log.Info("worker stopped")
+	logger.Info("worker stopped")
 }

@@ -67,11 +67,6 @@ func (m *mockDeleteHandler) HandleDelete(ctx context.Context, event worker.Avata
 	return args.Error(0)
 }
 
-// mockLogger мок для Logger
-type mockLogger struct {
-	mock.Mock
-}
-
 func TestNewRabbitConsumer(t *testing.T) {
 	mockCh := new(mockChannel)
 	cfg := config.RabbitMQConfig{}

@@ -95,7 +95,7 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input api.UploadAvatar
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "read file failed")
 
-		metrics.UploadsTotal.WithLabelValues("error", input.UserID).Inc()
+		metrics.UploadsTotal.WithLabelValues("error").Inc()
 		metrics.UploadDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 
 		logger.Error("failed to read file", "error", err)
@@ -107,7 +107,7 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input api.UploadAvatar
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "empty file")
 
-		metrics.UploadsTotal.WithLabelValues("error", input.UserID).Inc()
+		metrics.UploadsTotal.WithLabelValues("error").Inc()
 		metrics.UploadDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 
 		logger.Error("empty file")
@@ -121,7 +121,7 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input api.UploadAvatar
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "file too large")
 
-		metrics.UploadsTotal.WithLabelValues("error", input.UserID).Inc()
+		metrics.UploadsTotal.WithLabelValues("error").Inc()
 		metrics.UploadDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 
 		logger.Error("file too large", "size", len(data))
@@ -142,7 +142,7 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input api.UploadAvatar
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "invalid mime")
 
-		metrics.UploadsTotal.WithLabelValues("error", input.UserID).Inc()
+		metrics.UploadsTotal.WithLabelValues("error").Inc()
 		metrics.UploadDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 
 		logger.Error("invalid mime type", "mime", mimeType)
@@ -162,7 +162,6 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input api.UploadAvatar
 		int64(len(data)),
 		mimeType,
 	)
-	s3Span.End()
 
 	if err != nil {
 		s3Span.RecordError(err)
@@ -170,20 +169,21 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input api.UploadAvatar
 
 		span.RecordError(err)
 
-		metrics.UploadsTotal.WithLabelValues("error", input.UserID).Inc()
+		metrics.UploadsTotal.WithLabelValues("error").Inc()
 		metrics.UploadDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 
 		logger.Error("failed to upload to storage", "error", err)
 
 		return nil, fmt.Errorf("upload to minio: %w", err)
 	}
+	s3Span.End()
 
 	thumbnailKeys, err := json.Marshal(map[string]string{})
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "marshal failed")
 
-		metrics.UploadsTotal.WithLabelValues("error", input.UserID).Inc()
+		metrics.UploadsTotal.WithLabelValues("error").Inc()
 		metrics.UploadDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 
 		logger.Error("failed to marshal thumbnails", "error", err)
@@ -203,21 +203,20 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input api.UploadAvatar
 		UploadStatus:     status.Uploaded,
 		ProcessingStatus: status.Pending,
 	})
-	dbSpan.End()
-
 	if err != nil {
 		dbSpan.RecordError(err)
 		dbSpan.SetStatus(codes.Error, "db insert failed")
 
 		span.RecordError(err)
 
-		metrics.UploadsTotal.WithLabelValues("error", input.UserID).Inc()
+		metrics.UploadsTotal.WithLabelValues("error").Inc()
 		metrics.UploadDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 
 		logger.Error("failed to save metadata", "error", err)
 
 		return nil, fmt.Errorf("save avatar metadata: %w", err)
 	}
+	dbSpan.End()
 
 	ctx, mqSpan := otel.Tracer("avatar-service").Start(ctx, "publish_event")
 	err = s.publisher.PublishUploadEvent(ctx, AvatarUploadEvent{
@@ -225,24 +224,23 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input api.UploadAvatar
 		UserID:   input.UserID,
 		S3Key:    s3Key,
 	})
-	mqSpan.End()
-
 	if err != nil {
 		mqSpan.RecordError(err)
 		mqSpan.SetStatus(codes.Error, "publish failed")
 
 		span.RecordError(err)
 
-		metrics.UploadsTotal.WithLabelValues("error", input.UserID).Inc()
+		metrics.UploadsTotal.WithLabelValues("error").Inc()
 		metrics.UploadDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 
 		logger.Error("failed to publish event", "error", err)
 
 		return nil, fmt.Errorf("publish upload event: %w", err)
 	}
+	mqSpan.End()
 
 	duration := time.Since(start).Seconds()
-	metrics.UploadsTotal.WithLabelValues("success", input.UserID).Inc()
+	metrics.UploadsTotal.WithLabelValues("success").Inc()
 	metrics.UploadDuration.WithLabelValues("success").Observe(duration)
 
 	logger.Info("upload complete",
@@ -367,7 +365,6 @@ func (s *AvatarService) GetAvatarByID(ctx context.Context, avatarID, size string
 	ctx, s3Span := otel.Tracer("avatar-service").Start(ctx, "s3_download")
 
 	downloaded, err := s.storage.Download(ctx, keyToDownload)
-	s3Span.End()
 
 	if err != nil {
 		s3Span.RecordError(err)
@@ -378,6 +375,7 @@ func (s *AvatarService) GetAvatarByID(ctx context.Context, avatarID, size string
 		logger.Error("failed to download avatar", "error", err)
 		return nil, fmt.Errorf("download avatar from storage: %w", err)
 	}
+	s3Span.End()
 
 	logger.Info("get avatar success",
 		"duration_sec", time.Since(start).Seconds(),
@@ -446,7 +444,6 @@ func (s *AvatarService) GetUserAvatar(ctx context.Context, userID string) (*api.
 	ctx, s3Span := otel.Tracer("avatar-service").Start(ctx, "s3_download")
 
 	downloaded, err := s.storage.Download(ctx, avatar.S3Key)
-	s3Span.End()
 
 	if err != nil {
 		s3Span.RecordError(err)
@@ -457,6 +454,7 @@ func (s *AvatarService) GetUserAvatar(ctx context.Context, userID string) (*api.
 		logger.Error("failed to download avatar", "error", err)
 		return nil, fmt.Errorf("download user avatar from storage: %w", err)
 	}
+	s3Span.End()
 
 	logger.Info("get user avatar success",
 		"avatar_id", avatar.ID,
@@ -651,9 +649,6 @@ func (s *AvatarService) DeleteAvatarByID(ctx context.Context, avatarID, userID s
 		UserID:   res.UserID,
 		S3Key:    res.S3Key,
 	})
-
-	mqSpan.End()
-
 	if err != nil {
 		mqSpan.RecordError(err)
 		mqSpan.SetStatus(codes.Error, "publish failed")
@@ -663,6 +658,7 @@ func (s *AvatarService) DeleteAvatarByID(ctx context.Context, avatarID, userID s
 		logger.Error("failed to publish delete event", "error", err)
 		return fmt.Errorf("publish delete event: %w", err)
 	}
+	mqSpan.End()
 
 	logger.Info("delete avatar event published",
 		"duration_sec", time.Since(start).Seconds(),
@@ -700,9 +696,12 @@ func (s *AvatarService) DeleteCurrentUserAvatar(ctx context.Context, userID stri
 }
 
 func newLogger(ctx context.Context, userID string) *slog.Logger {
+	spanCtx := trace.SpanFromContext(ctx).SpanContext()
+
 	return slog.With(
 		"service", "avatar-service",
-		"trace_id", trace.SpanFromContext(ctx).SpanContext().TraceID(),
+		"trace_id", spanCtx.TraceID().String(),
+		"span_id", spanCtx.SpanID().String(),
 		"user_id", userID,
 	)
 }
