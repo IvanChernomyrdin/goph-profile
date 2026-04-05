@@ -11,6 +11,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 type AvatarRepository struct {
@@ -50,22 +52,18 @@ type CreateAvatarParams struct {
 	ProcessingStatus string
 }
 
-type ProcessMessage struct {
-	MessageID    string
-	ConsumerName string
-	EventType    string
-	EntityID     string
-	ProcessedAt  time.Time
-}
-
 func NewAvatarRepository(db *sql.DB) *AvatarRepository {
 	return &AvatarRepository{db: db}
 }
 
 func repoLogger(ctx context.Context, operation string) *slog.Logger {
+	spanCtx := trace.SpanFromContext(ctx).SpanContext()
+
 	return slog.Default().With(
 		"component", "avatar-repository",
 		"operation", operation,
+		"trace_id", spanCtx.TraceID().String(),
+		"span_id", spanCtx.SpanID().String(),
 	)
 }
 
@@ -124,7 +122,7 @@ func (r *AvatarRepository) CreateAvatar(ctx context.Context, avatar CreateAvatar
 
 	logger.Info("avatar inserted successfully")
 
-	return err
+	return nil
 }
 
 // GetAvatarByID получает запись аватара по ID.
@@ -218,12 +216,22 @@ func (r *AvatarRepository) UpdateProcessingStatus(ctx context.Context, avatarID,
 		  AND deleted_at IS NULL
 	`
 
-	_, err := r.db.ExecContext(ctx, query, avatarID, status)
+	res, err := r.db.ExecContext(ctx, query, avatarID, status)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "update processing status failed")
 		logger.Error("failed to update processing status", "error", err)
 		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		logger.Warn("avatar not found")
+		return ErrAvatarNotFound
 	}
 
 	logger.Info("processing status updated successfully")
@@ -232,6 +240,15 @@ func (r *AvatarRepository) UpdateProcessingStatus(ctx context.Context, avatarID,
 
 // CompleteProcessing записывает ключи миниатюр и ставит completed.
 func (r *AvatarRepository) CompleteProcessing(ctx context.Context, avatarID string, thumbnailKeys []byte) error {
+	ctx, span := otel.Tracer("avatars-repository").Start(ctx, "avatars.complete_processing")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("avatar.id", avatarID),
+	)
+
+	logger := repoLogger(ctx, "CompleteProcessing").With("avatar_id", avatarID)
+
 	const query = `
 		UPDATE avatars
 		SET
@@ -242,8 +259,29 @@ func (r *AvatarRepository) CompleteProcessing(ctx context.Context, avatarID stri
 		  AND deleted_at IS NULL
 	`
 
-	_, err := r.db.ExecContext(ctx, query, avatarID, thumbnailKeys)
-	return err
+	res, err := r.db.ExecContext(ctx, query, avatarID, thumbnailKeys)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "complete processing failed")
+		logger.Error("failed to complete processing", "error", err)
+
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		logger.Warn("avatar not found")
+		return ErrAvatarNotFound
+	}
+
+	logger.Info("processing completed")
+
+	return nil
 }
 
 // FailProcessing ставит failed.
@@ -271,12 +309,22 @@ func (r *AvatarRepository) FailProcessing(ctx context.Context, avatarID string) 
 		  AND deleted_at IS NULL
 	`
 
-	_, err := r.db.ExecContext(ctx, query, avatarID)
+	res, err := r.db.ExecContext(ctx, query, avatarID)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "fail processing update failed")
 		logger.Error("failed to set failed processing status", "error", err)
 		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return ErrAvatarNotFound
 	}
 
 	logger.Info("processing marked as failed")
@@ -542,13 +590,23 @@ func (r *AvatarRepository) DeleteCurrentUserAvatar(ctx context.Context, userID s
 		  AND deleted_at IS NULL
 	`
 
-	_, err := r.db.ExecContext(ctx, query, userID)
+	res, err := r.db.ExecContext(ctx, query, userID)
 	if err != nil {
 		wrappedErr := fmt.Errorf("update current avatar: %w", err)
 		span.RecordError(wrappedErr)
 		span.SetStatus(codes.Error, "delete current avatar failed")
 		logger.Error("failed to delete current avatar flag", "error", wrappedErr)
 		return wrappedErr
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return ErrAvatarNotFound
 	}
 
 	logger.Info("current avatar flag removed successfully")
@@ -580,13 +638,23 @@ func (r *AvatarRepository) SoftDeleteAvatar(ctx context.Context, avatarID string
 		  AND deleted_at IS NULL
 	`
 
-	_, err := r.db.ExecContext(ctx, query, avatarID)
+	res, err := r.db.ExecContext(ctx, query, avatarID)
 	if err != nil {
 		wrappedErr := fmt.Errorf("soft delete avatar: %w", err)
 		span.RecordError(wrappedErr)
 		span.SetStatus(codes.Error, "soft delete failed")
 		logger.Error("failed to soft delete avatar", "error", wrappedErr)
 		return wrappedErr
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return ErrAvatarNotFound
 	}
 
 	logger.Info("avatar soft deleted successfully")

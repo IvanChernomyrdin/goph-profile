@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"goph-profile-avatars/internal/config"
+	"goph-profile-avatars/internal/metrics"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // UploadHandler — интерфейс сервиса обработки события загрузки.
@@ -55,9 +57,23 @@ func NewRabbitConsumer(
 	}
 }
 
+func logWithTrace(ctx context.Context, baseLogger *slog.Logger) *slog.Logger {
+	var traceID, spanID string
+	span := trace.SpanFromContext(ctx)
+	if span != nil && span.SpanContext().IsValid() {
+		traceID = span.SpanContext().TraceID().String()
+		spanID = span.SpanContext().SpanID().String()
+	}
+
+	return baseLogger.With(
+		"trace_id", traceID,
+		"span_id", spanID,
+	)
+}
+
 func (c *RabbitConsumer) Run(ctx context.Context) error {
 	if err := c.declareInfrastructure(); err != nil {
-		c.log.Error("declare rabbitmq infrastructure failed", "error", err)
+		logWithTrace(ctx, c.log).Error("declare rabbitmq infrastructure failed", "error", err)
 		return fmt.Errorf("declare rabbitmq infrastructure: %w", err)
 	}
 
@@ -71,7 +87,7 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 		nil,
 	)
 	if err != nil {
-		c.log.Error("start upload consumer failed", "error", err)
+		logWithTrace(ctx, c.log).Error("start upload consumer failed", "error", err)
 		return fmt.Errorf("consume message: %w", err)
 	}
 
@@ -85,11 +101,11 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 		nil,
 	)
 	if err != nil {
-		c.log.Error("consume delete messages", "error", err)
+		logWithTrace(ctx, c.log).Error("consume delete messages", "error", err)
 		return fmt.Errorf("consume delete messages: %w", err)
 	}
 
-	c.log.Info(
+	logWithTrace(ctx, c.log).Info(
 		"rabbit consumer started",
 		"upload_queue", c.cfg.QueueUpload,
 		"delete_queue", c.cfg.QueueDelete,
@@ -102,17 +118,17 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			c.log.Info("rabbit consumer stopped by context")
+			logWithTrace(ctx, c.log).Info("rabbit consumer stopped by context")
 			return nil
 
 		case msg, ok := <-uploadMsgs:
 			if !ok {
-				c.log.Warn("upload consumer channel closed")
+				logWithTrace(ctx, c.log).Warn("upload consumer channel closed")
 				return fmt.Errorf("upload consumer channel closed")
 			}
 
 			if err := c.handleUploadMessage(ctx, msg); err != nil {
-				c.log.Error(
+				logWithTrace(ctx, c.log).Error(
 					"handle upload message failed",
 					"error", err,
 					"routing_key", msg.RoutingKey,
@@ -121,22 +137,28 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 				)
 
 				if nackErr := msg.Nack(false, false); nackErr != nil {
-					c.log.Error("message upload nack failed", "error", nackErr)
+					metrics.RabbitMQMessageNackFailures.WithLabelValues("upload").Inc()
+					logWithTrace(ctx, c.log).Error("message upload nack failed", "error", nackErr)
+				} else {
+					metrics.RabbitMQMessageNacks.WithLabelValues("upload").Inc()
 				}
 				continue
 			}
 
 			if err := msg.Ack(false); err != nil {
-				c.log.Error("message upload ack failed", "error", err)
+				metrics.RabbitMQMessageAckFailures.WithLabelValues("upload").Inc()
+				logWithTrace(ctx, c.log).Error("message upload ack failed", "error", err)
+			} else {
+				metrics.RabbitMQMessageAcks.WithLabelValues("upload").Inc()
 			}
 		case msg, ok := <-deleteMsgs:
 			if !ok {
-				c.log.Warn("delete consumer channel closed")
+				logWithTrace(ctx, c.log).Warn("delete consumer channel closed")
 				return fmt.Errorf("delete consumer channel closed")
 			}
 
 			if err := c.handleDeleteMessage(ctx, msg); err != nil {
-				c.log.Error(
+				logWithTrace(ctx, c.log).Error(
 					"handle delete message failed",
 					"error", err,
 					"routing_key", msg.RoutingKey,
@@ -145,13 +167,19 @@ func (c *RabbitConsumer) Run(ctx context.Context) error {
 				)
 
 				if nackErr := msg.Nack(false, false); nackErr != nil {
-					c.log.Error("message delete nack failed", "error", nackErr)
+					metrics.RabbitMQMessageNackFailures.WithLabelValues("delete").Inc()
+					logWithTrace(ctx, c.log).Error("message delete nack failed", "error", nackErr)
+				} else {
+					metrics.RabbitMQMessageNacks.WithLabelValues("delete").Inc()
 				}
 				continue
 			}
 
 			if err := msg.Ack(false); err != nil {
-				c.log.Error("message delete ack failed", "error", err)
+				metrics.RabbitMQMessageNackFailures.WithLabelValues("upload").Inc()
+				logWithTrace(ctx, c.log).Error("message delete ack failed", "error", err)
+			} else {
+				metrics.RabbitMQMessageNacks.WithLabelValues("upload").Inc()
 			}
 		}
 	}
@@ -238,7 +266,7 @@ func (c *RabbitConsumer) handleUploadMessage(ctx context.Context, msg amqp.Deliv
 		return fmt.Errorf("empty user_id")
 	}
 
-	c.log.Info(
+	logWithTrace(ctx, c.log).Info(
 		"received upload event",
 		"avatar_id", event.AvatarID,
 		"user_id", event.UserID,
@@ -255,7 +283,7 @@ func (c *RabbitConsumer) handleUploadMessage(ctx context.Context, msg amqp.Deliv
 		return fmt.Errorf("handle upload event: %w", err)
 	}
 
-	c.log.Info("upload event processed successfully", "avatar_id", event.AvatarID)
+	logWithTrace(ctx, c.log).Info("upload event processed successfully", "avatar_id", event.AvatarID)
 	return nil
 }
 
@@ -276,7 +304,7 @@ func (c *RabbitConsumer) handleDeleteMessage(ctx context.Context, msg amqp.Deliv
 		return fmt.Errorf("empty user_id")
 	}
 
-	c.log.Info(
+	logWithTrace(ctx, c.log).Info(
 		"received delete event",
 		"avatar_id", event.AvatarID,
 		"user_id", event.UserID,
@@ -293,6 +321,6 @@ func (c *RabbitConsumer) handleDeleteMessage(ctx context.Context, msg amqp.Deliv
 		return fmt.Errorf("handle delete event: %w", err)
 	}
 
-	c.log.Info("delete event processed successfully", "avatar_id", event.AvatarID)
+	logWithTrace(ctx, c.log).Info("delete event processed successfully", "avatar_id", event.AvatarID)
 	return nil
 }

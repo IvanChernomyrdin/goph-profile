@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,16 +17,6 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// Инициализация slog + OTEL
-	logger, shutdownObservability := logging.InitObservability(
-		ctx,
-		"gophprofile-worker",
-		"1.0.0",
-	)
-	defer shutdownObservability()
-
-	logger.Info("starting gophprofile worker")
-
 	// подключаем переменные окружения для воркера
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
@@ -34,9 +25,20 @@ func main() {
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		logger.Error("failed to load config", "error", err, "config_path", configPath)
+		fmt.Errorf("failed to load config: %w, config_path: %w", err, configPath)
 		return
 	}
+
+	// Инициализация slog + OTEL
+	logger, shutdownObservability := logging.InitObservability(
+		ctx,
+		"gophprofile-worker",
+		"1.0.0",
+		fmt.Sprintf("%s:%d", cfg.Jaeger.Name, cfg.Jaeger.Port),
+	)
+	defer shutdownObservability()
+
+	logger.Info("starting gophprofile worker")
 
 	logger.Info("worker config loaded", "config_path", configPath)
 

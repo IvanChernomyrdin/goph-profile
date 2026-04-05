@@ -17,7 +17,7 @@ import (
 
 type ShutdownFunc func()
 
-func InitObservability(ctx context.Context, serviceName, serviceVersion string) (*slog.Logger, ShutdownFunc) {
+func InitObservability(ctx context.Context, serviceName, serviceVersion string, host string) (*slog.Logger, ShutdownFunc) {
 	res, err := resource.New(ctx,
 		resource.WithFromEnv(),
 		resource.WithTelemetrySDK(),
@@ -33,7 +33,7 @@ func InitObservability(ctx context.Context, serviceName, serviceVersion string) 
 	}
 
 	traceExporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithEndpoint("jaeger:4317"),
+		otlptracegrpc.WithEndpoint(host),
 		otlptracegrpc.WithInsecure(),
 	)
 	if err != nil {

@@ -45,7 +45,6 @@ func (s *MinIOStorage) Upload(ctx context.Context, key string, body io.Reader, s
 		attribute.String("content_type", contentType),
 	)
 
-	start := time.Now()
 	logger := slog.With("service", "minio-storage", "key", key, "trace_id", span.SpanContext().TraceID())
 
 	_, err := s.client.PutObject(ctx, s.bucket, key, body, size, minio.PutObjectOptions{
@@ -58,11 +57,6 @@ func (s *MinIOStorage) Upload(ctx context.Context, key string, body io.Reader, s
 		metrics.UploadsTotal.WithLabelValues("error").Inc()
 		return fmt.Errorf("upload object %s: %w", key, err)
 	}
-
-	duration := time.Since(start).Seconds()
-	logger.Info("upload success", "duration_sec", duration)
-	metrics.UploadsTotal.WithLabelValues("success").Inc()
-	metrics.UploadDuration.WithLabelValues("success").Observe(duration)
 
 	return err
 }

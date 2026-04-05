@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,15 +20,6 @@ import (
 func main() {
 	ctx := context.Background()
 
-	logger, shutdownObservability := logging.InitObservability(
-		ctx,
-		"gophprofile-server",
-		"1.0.0",
-	)
-	defer shutdownObservability()
-
-	logger.Info("starting gophprofile server")
-
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		configPath = "./configs/server.yaml"
@@ -35,11 +27,19 @@ func main() {
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		logger.Error("failed to load config", "error", err, "config_path", configPath)
+		fmt.Errorf("failed to load config: %w, config_path: %w", err, configPath)
 		return
 	}
 
-	logger.Info("server config loaded", "config_path", configPath)
+	logger, shutdownObservability := logging.InitObservability(
+		ctx,
+		"gophprofile-server",
+		"1.0.0",
+		fmt.Sprintf("%s:%d", cfg.Jaeger.Name, cfg.Jaeger.Port),
+	)
+	defer shutdownObservability()
+
+	logger.Info("starting gophprofile server")
 
 	if err := config.PostgresInit(cfg.Postgres.DSN); err != nil {
 		logger.Error("failed to init Postgres", "error", err)
