@@ -194,6 +194,8 @@ services:
       otel-collector:
         condition: service_started
     command: ["/app/gophprofile-worker"]
+    ports:
+      - "9091:9091"
 
 volumes:
   postgres_data:

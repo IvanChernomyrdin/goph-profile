@@ -3,21 +3,24 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"goph-profile-avatars/internal/config"
 	"goph-profile-avatars/internal/logging"
 	"goph-profile-avatars/internal/repository"
 	"goph-profile-avatars/internal/services"
 	"goph-profile-avatars/internal/worker"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
 	ctx := context.Background()
 
-	// подключаем переменные окружения для воркера
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		configPath = "./configs/server.yaml"
@@ -29,7 +32,6 @@ func main() {
 		return
 	}
 
-	// Инициализация slog + OTEL
 	logger, shutdownObservability := logging.InitObservability(
 		ctx,
 		"gophprofile-worker",
@@ -40,21 +42,16 @@ func main() {
 
 	logger.Info("starting gophprofile worker")
 
-	logger.Info("worker config loaded", "config_path", configPath)
-
-	// подключаем PostgreSQL
 	if err := config.PostgresInit(cfg.Postgres.DSN); err != nil {
 		logger.Error("failed to init Postgres", "error", err)
 		return
 	}
 
-	// подключаем MinIO / S3
 	if err := config.MinIOAWSInit(cfg.S3); err != nil {
 		logger.Error("failed to init MinIO/S3", "error", err)
 		return
 	}
 
-	// подключаем RabbitMQ
 	if err := config.RabbitMQInit(cfg.RabbitMQ); err != nil {
 		logger.Error("failed to init RabbitMQ", "error", err)
 		return
@@ -65,18 +62,15 @@ func main() {
 		}
 	}()
 
-	// зависимости воркера
 	avatarRepo := repository.NewAvatarRepository(config.GetDB())
 	storage := services.NewMinIOStorage(config.GetMinIOClient(), cfg.S3.Bucket)
 
-	// сервис обработки изображений
 	avatarWorkerService := worker.NewAvatarWorkerService(
 		avatarRepo,
 		storage,
 		logger,
 	)
 
-	// consumer RabbitMQ
 	consumer := worker.NewRabbitConsumer(
 		config.GetRabbitChannel(),
 		cfg.RabbitMQ,
@@ -85,9 +79,34 @@ func main() {
 		logger,
 	)
 
-	// graceful shutdown
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+
+	metricsSrv := &http.Server{
+		Addr:              ":9091",
+		Handler:           metricsMux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		logger.Info("worker metrics server started", "addr", ":9091")
+		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("worker metrics server error", "error", err)
+		}
+	}()
+
 	ctxShutdown, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	go func() {
+		<-ctxShutdown.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+			logger.Error("worker metrics shutdown error", "error", err)
+		}
+	}()
 
 	logger.Info(
 		"worker started",
