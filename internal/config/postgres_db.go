@@ -13,11 +13,10 @@ package config
 import (
 	"database/sql"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
-
-	logger "goph-profile-avatars/internal/logging"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -38,18 +37,19 @@ var DB *sql.DB
 // Миграции запускаются из каталога file://migrations/postgres.
 // Если миграции уже применены, ошибка migrate.ErrNoChange не считается ошибкой.
 func PostgresInit(databaseDSN string) error {
-	customLog := logger.NewHTTPLogger().Sugar()
+	logger := slog.Default().With(
+		"component", "postgres-init",
+	)
 
 	var err error
 	DB, err = sql.Open("pgx", databaseDSN)
-
 	if err != nil {
-		customLog.Errorf("error to connect db: %v", err)
+		logger.Error("failed to open db connection", "error", err)
 		return err
 	}
 
 	if err = DB.Ping(); err != nil {
-		customLog.Errorf("error check db connection: %v", err)
+		logger.Error("failed to ping db", "error", err)
 		return err
 	}
 
@@ -58,17 +58,17 @@ func PostgresInit(databaseDSN string) error {
 	// если папки миграций ещё нет — просто пропускаем
 	if _, err := os.Stat(migrationsPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			customLog.Warnf("migrations directory %s not found, skipping migrations", migrationsPath)
+			logger.Warn("migrations directory not found, skipping migrations", "path", migrationsPath)
 			return nil
 		}
-		customLog.Errorf("error checking migrations directory: %v", err)
+		logger.Error("failed to check migrations directory", "error", err)
 		return err
 	}
 
 	// если папка есть, но в ней нет migration-файлов — тоже пропускаем
 	entries, err := os.ReadDir(migrationsPath)
 	if err != nil {
-		customLog.Errorf("error reading migrations directory: %v", err)
+		logger.Error("failed to read migrations directory", "error", err)
 		return err
 	}
 
@@ -86,13 +86,13 @@ func PostgresInit(databaseDSN string) error {
 	}
 
 	if !hasMigrationFiles {
-		customLog.Warnf("no migration files found in %s, skipping migrations", migrationsPath)
+		logger.Warn("no migration files found, skipping migrations", "path", migrationsPath)
 		return nil
 	}
 
 	absPath, err := filepath.Abs(migrationsPath)
 	if err != nil {
-		customLog.Errorf("error resolving migrations path: %v", err)
+		logger.Error("failed to resolve migrations path", "error", err)
 		return err
 	}
 
@@ -101,32 +101,34 @@ func PostgresInit(databaseDSN string) error {
 	// Запуск миграций
 	driver, err := postgres.WithInstance(DB, &postgres.Config{})
 	if err != nil {
-		customLog.Errorf("error creating migration driver: %v", err)
+		logger.Error("failed to create migration driver", "error", err)
 		return err
 	}
 
 	// создаём миграции с выбранным драйвером
 	m, err := migrate.NewWithDatabaseInstance(
 		"file://"+absPath,
-		"postgres", driver)
+		"postgres",
+		driver,
+	)
 	if err != nil {
-		customLog.Errorf("error creating migrations: %v", err)
+		logger.Error("failed to create migrations instance", "error", err)
 		return err
 	}
 
-	// запускаем создание миграций
+	// запускаем миграции
 	err = m.Up()
 	if err != nil {
 		if errors.Is(err, migrate.ErrNoChange) {
-			customLog.Info("no new migrations to apply")
+			logger.Info("no new migrations to apply")
 			return nil
 		}
 
-		customLog.Errorf("error applying migrations: %v", err)
+		logger.Error("failed to apply migrations", "error", err)
 		return err
 	}
 
-	customLog.Info("migrations applied successfully")
+	logger.Info("migrations applied successfully")
 	return nil
 }
 

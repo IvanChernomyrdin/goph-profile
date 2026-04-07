@@ -12,6 +12,7 @@ type Config struct {
 	S3        S3Config       `yaml:"s3"`
 	RabbitMQ  RabbitMQConfig `yaml:"rabbitmq"`
 	RateLimit RateLimit      `yaml:"rate_limit"`
+	Jaeger    JaegerConfig   `yaml:"jaeger"`
 }
 
 type AppConfig struct {
@@ -23,6 +24,11 @@ type AppConfig struct {
 
 type PostgresConfig struct {
 	DSN string `yaml:"dsn"`
+}
+
+type JaegerConfig struct {
+	Name string `yaml:"name"`
+	Port int    `yaml:"port"`
 }
 
 type S3Config struct {

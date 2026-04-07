@@ -65,7 +65,7 @@ func TestMinIOHealthService_Check_WithContextCancel(t *testing.T) {
 	cancel()
 
 	expectedErr := context.Canceled
-	mockClient.On("ListBuckets", ctx).Return(nil, expectedErr)
+	mockClient.On("ListBuckets", mock.Anything).Return(nil, expectedErr)
 
 	err := service.Check(ctx)
 

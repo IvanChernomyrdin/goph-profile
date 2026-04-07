@@ -218,7 +218,9 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	if !validateFileName(header.Filename, w) {
 		return
@@ -285,7 +287,9 @@ func (h *Handler) GetAvatar(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer result.Reader.Close()
+	defer func() {
+		_ = result.Reader.Close()
+	}()
 
 	writeFileResponse(w, result)
 }
@@ -311,7 +315,9 @@ func (h *Handler) GetUserAvatar(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer result.Reader.Close()
+	defer func() {
+		_ = result.Reader.Close()
+	}()
 
 	writeFileResponse(w, result)
 }

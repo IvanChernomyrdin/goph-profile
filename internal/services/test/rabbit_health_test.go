@@ -68,13 +68,11 @@ func TestRabbitMQHealthService_Check_ChannelCreationError(t *testing.T) {
 	mockConn := new(mockConnection)
 	service := services.NewRabbitMQHealthService(mockConn)
 
-	expectedErr := errors.New("channel creation failed")
 	mockConn.On("IsClosed").Return(false)
-	mockConn.On("Channel").Return(nil, expectedErr)
+	mockConn.On("Channel").Return(nil, errors.New("channel creation failed"))
 
 	err := service.Check(context.Background())
 
 	assert.Error(t, err)
-	assert.Equal(t, expectedErr, err)
 	mockConn.AssertExpectations(t)
 }

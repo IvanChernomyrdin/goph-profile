@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"goph-profile-avatars/internal/api"
@@ -32,7 +33,7 @@ func TestDeleteAvatarByID(t *testing.T) {
 			avatarID: validUUID,
 			userID:   "user123",
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("DeleteAvatarByID", validUUID, "user123").Return(nil)
+				m.On("DeleteAvatarByID", mock.Anything, validUUID, "user123").Return(nil)
 			},
 			expectedStatus: http.StatusAccepted,
 		},
@@ -41,7 +42,7 @@ func TestDeleteAvatarByID(t *testing.T) {
 			avatarID: validUUID,
 			userID:   "user123",
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("DeleteAvatarByID", validUUID, "user123").Return(constErr.ErrAvatarDeletionAlreadyQueued)
+				m.On("DeleteAvatarByID", mock.Anything, validUUID, "user123").Return(constErr.ErrAvatarDeletionAlreadyQueued)
 			},
 			expectedStatus: http.StatusAccepted,
 		},

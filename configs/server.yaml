@@ -1,0 +1,32 @@
+app:
+  name: "gophprofile"
+  env: "local"
+  host: "0.0.0.0"
+  port: "8080"
+
+postgres:
+  dsn: "postgres://postgres:postgres@127.0.0.1:5432/gophprofile?sslmode=disable"
+
+s3:
+  endpoint: "127.0.0.1:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  bucket: "avatars"
+  use_ssl: false
+  region: "us-east-1"
+
+rabbitmq:
+  url: "amqp://guest:guest@127.0.0.1:5672/"
+  exchange: "avatars.exchange"
+  exchange_type: "direct"
+  upload_routing_key: "avatar.uploaded"
+  delete_routing_key: "avatar.deleted"
+  queue_upload: "avatars.upload.queue"
+  queue_delete: "avatars.delete.queue"
+
+rate_limit:
+  requests_per_minute: 10
+
+jaeger:
+  name: "jaeger"
+  port: 4317

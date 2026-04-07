@@ -36,7 +36,7 @@ func TestUploadAvatar(t *testing.T) {
 			fileName:    "avatar.jpg",
 			fileContent: validJPEG(),
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("UploadAvatar", mock.MatchedBy(func(input api.UploadAvatarInput) bool {
+				m.On("UploadAvatar", mock.Anything, mock.MatchedBy(func(input api.UploadAvatarInput) bool {
 					return input.UserID == "user123" && input.FileName == "avatar.jpg"
 				})).Return(&api.UploadAvatarResult{
 					ID:        validUUID,
@@ -54,7 +54,7 @@ func TestUploadAvatar(t *testing.T) {
 			fileName:    "avatar.png",
 			fileContent: validPNG(),
 			setupMock: func(m *mocks.AvatarService) {
-				m.On("UploadAvatar", mock.MatchedBy(func(input api.UploadAvatarInput) bool {
+				m.On("UploadAvatar", mock.Anything, mock.MatchedBy(func(input api.UploadAvatarInput) bool {
 					return input.UserID == "user123" && input.FileName == "avatar.png"
 				})).Return(&api.UploadAvatarResult{
 					ID:        validUUID,
@@ -100,7 +100,7 @@ func TestUploadAvatar(t *testing.T) {
 			fileContent:    []byte{},
 			setupMock:      func(m *mocks.AvatarService) {},
 			expectedStatus: http.StatusBadRequest,
-			expectedError:  "invalid file",
+			expectedError:  "Invalid file",
 		},
 	}
 

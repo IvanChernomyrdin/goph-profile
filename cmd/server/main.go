@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,44 +11,56 @@ import (
 
 	apis "goph-profile-avatars/internal/api"
 	"goph-profile-avatars/internal/config"
-	logger "goph-profile-avatars/internal/logging"
+	"goph-profile-avatars/internal/logging"
 	routerhttp "goph-profile-avatars/internal/net/http"
 	"goph-profile-avatars/internal/repository"
 	"goph-profile-avatars/internal/services"
 )
 
 func main() {
-	// инициализировали логер
-	sugar := logger.NewHTTPLogger().Sugar()
-	// httpLogger := logger.NewHTTPLogger()
+	ctx := context.Background()
 
-	// подключаем переменные окружения для сервака
-	cfg, err := config.Load("./configs/server.yaml")
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "./configs/server.yaml"
+	}
+
+	cfg, err := config.Load(configPath)
 	if err != nil {
-		sugar.Fatal(err)
+		fmt.Errorf("failed to load config: %w, config_path: %w", err, configPath)
+		return
 	}
 
-	// подключаем PostgreSQL для метаданных
+	logger, shutdownObservability := logging.InitObservability(
+		ctx,
+		"gophprofile-server",
+		"1.0.0",
+		fmt.Sprintf("%s:%d", cfg.Jaeger.Name, cfg.Jaeger.Port),
+	)
+	defer shutdownObservability()
+
+	logger.Info("starting gophprofile server")
+
 	if err := config.PostgresInit(cfg.Postgres.DSN); err != nil {
-		sugar.Fatal(err)
+		logger.Error("failed to init Postgres", "error", err)
+		return
 	}
 
-	// подключаем MinIO/AWS S3 для хранения файлов
 	if err := config.MinIOAWSInit(cfg.S3); err != nil {
-		sugar.Fatal(err)
+		logger.Error("failed to init MinIO/S3", "error", err)
+		return
 	}
 
-	// подключаем rabbitMQ
 	if err := config.RabbitMQInit(cfg.RabbitMQ); err != nil {
-		sugar.Fatal(err)
+		logger.Error("failed to init RabbitMQ", "error", err)
+		return
 	}
 	defer func() {
 		if err := config.CloseRabbitMQ(); err != nil {
-			sugar.Errorf("rabbitmq close error: %v", err)
+			logger.Error("rabbitmq close error", "error", err)
 		}
 	}()
 
-	// запускаем сервис
 	healthService := apis.NewHealthService(
 		config.GetDB(),
 		services.NewMinIOHealthService(config.GetMinIOClient()),
@@ -63,7 +76,6 @@ func main() {
 		cfg.RabbitMQ.DeleteRoutingKey,
 	)
 
-	// запускаем chi роутер
 	avatarService := services.NewAvatarService(
 		avatarRepo,
 		storage,
@@ -76,9 +88,9 @@ func main() {
 	)
 
 	router := routerhttp.NewRouter(handler, cfg.RateLimit.RequestPerMinute)
-	// формирует строку подключения >> хост:порт
+
 	addr := cfg.App.Host + ":" + cfg.App.Port
-	sugar.Infof("server started on %s", addr)
+	logger.Info("server configured", "addr", addr)
 
 	srv := &http.Server{
 		Addr:              addr,
@@ -88,26 +100,26 @@ func main() {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	// канал для сигналов
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	// запуск сервера в отдельной горутине
+
 	go func() {
+		logger.Info("server started", "addr", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			sugar.Fatalf("listen: %s\n", err)
+			logger.Error("listen error", "error", err)
 		}
 	}()
 
-	// ждем сигнал
 	<-stop
-	sugar.Info("shutting down server...")
+	logger.Info("shutting down server")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		sugar.Fatalf("server forced to shutdown: %v", err)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("server forced to shutdown", "error", err)
 	}
 
-	sugar.Info("server exiting")
+	logger.Info("server exiting")
 }
