@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"goph-profile-avatars/internal/metrics"
+	"goph-profile-avatars/internal/resilience"
 	"io"
 	"log/slog"
 	"time"
 
 	"github.com/minio/minio-go/v7"
+	"github.com/sony/gobreaker"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -22,14 +24,22 @@ type MinioClientInterface interface {
 }
 
 type MinIOStorage struct {
-	client MinioClientInterface
-	bucket string
+	client     MinioClientInterface
+	bucket     string
+	uploadCB   *gobreaker.CircuitBreaker
+	downloadCB *gobreaker.CircuitBreaker
+	deleteCB   *gobreaker.CircuitBreaker
+	checkCB    *gobreaker.CircuitBreaker
 }
 
-func NewMinIOStorage(client MinioClientInterface, bucket string) *MinIOStorage {
+func NewMinIOStorage(client MinioClientInterface, bucket string, logger *slog.Logger) *MinIOStorage {
 	return &MinIOStorage{
-		client: client,
-		bucket: bucket,
+		client:     client,
+		bucket:     bucket,
+		uploadCB:   resilience.New("minio-upload", logger),
+		downloadCB: resilience.New("minio-download", logger),
+		deleteCB:   resilience.New("minio-delete", logger),
+		checkCB:    resilience.New("minio-check", logger),
 	}
 }
 
@@ -47,9 +57,13 @@ func (s *MinIOStorage) Upload(ctx context.Context, key string, body io.Reader, s
 
 	logger := slog.With("service", "minio-storage", "key", key, "trace_id", span.SpanContext().TraceID())
 
-	_, err := s.client.PutObject(ctx, s.bucket, key, body, size, minio.PutObjectOptions{
-		ContentType: contentType,
+	_, err := s.uploadCB.Execute(func() (any, error) {
+		_, err := s.client.PutObject(ctx, s.bucket, key, body, size, minio.PutObjectOptions{
+			ContentType: contentType,
+		})
+		return nil, err
 	})
+
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "upload failed")
@@ -82,38 +96,46 @@ func (s *MinIOStorage) Download(ctx context.Context, key string) (*DownloadResul
 	start := time.Now()
 	logger := slog.With("service", "minio-storage", "key", key, "trace_id", span.SpanContext().TraceID())
 
-	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "get object failed")
-		logger.Error("failed to get object", "error", err)
-		return nil, fmt.Errorf("get object %s: %w", key, err)
-	}
+	v, err := s.downloadCB.Execute(func() (any, error) {
+		obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("get object %s: %w", key, err)
+		}
 
-	info, err := obj.Stat()
+		info, err := obj.Stat()
+		if err != nil {
+			_ = obj.Close()
+			return nil, fmt.Errorf("stat object %s: %w", key, err)
+		}
+
+		contentType := info.ContentType
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+
+		return &DownloadResult{
+			Reader:      obj,
+			Size:        info.Size,
+			ContentType: contentType,
+		}, nil
+	})
 	if err != nil {
-		_ = obj.Close()
 		span.RecordError(err)
-		span.SetStatus(codes.Error, "stat object failed")
-		logger.Error("failed to stat object", "error", err)
+		span.SetStatus(codes.Error, "download failed")
+		logger.Error("failed to download object", "error", err)
+		metrics.DownloadsTotal.WithLabelValues("error").Inc()
+		metrics.DownloadDuration.WithLabelValues("error").Observe(time.Since(start).Seconds())
 		return nil, err
 	}
 
-	contentType := info.ContentType
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
+	result := v.(*DownloadResult)
 
 	duration := time.Since(start).Seconds()
-	logger.Info("download success", "size", info.Size, "duration_sec", duration)
+	logger.Info("download success", "size", result.Size, "duration_sec", duration)
 	metrics.DownloadsTotal.WithLabelValues("success").Inc()
 	metrics.DownloadDuration.WithLabelValues("success").Observe(duration)
 
-	return &DownloadResult{
-		Reader:      obj,
-		Size:        info.Size,
-		ContentType: contentType,
-	}, nil
+	return result, nil
 }
 
 func (s *MinIOStorage) Delete(ctx context.Context, objectKey string) error {
@@ -128,7 +150,10 @@ func (s *MinIOStorage) Delete(ctx context.Context, objectKey string) error {
 
 	logger := slog.With("service", "minio-storage", "key", objectKey, "trace_id", span.SpanContext().TraceID())
 
-	err := s.client.RemoveObject(ctx, s.bucket, objectKey, minio.RemoveObjectOptions{})
+	_, err := s.deleteCB.Execute(func() (any, error) {
+		err := s.client.RemoveObject(ctx, s.bucket, objectKey, minio.RemoveObjectOptions{})
+		return nil, err
+	})
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "delete failed")

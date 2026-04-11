@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-init
+  namespace: gophprofile
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: minio-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: minio-init
+          image: minio/mc:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until mc alias set local http://minio:9000 minioadmin minioadmin; do
+                echo "waiting for minio..."
+                sleep 3
+              done
+              mc mb local/avatars --ignore-existing

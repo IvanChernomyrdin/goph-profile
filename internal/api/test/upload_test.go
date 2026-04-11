@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
@@ -109,7 +110,7 @@ func TestUploadAvatar(t *testing.T) {
 			mockSvc := new(mocks.AvatarService)
 			tt.setupMock(mockSvc)
 
-			handler := api.NewHandler(nil, mockSvc)
+			handler := api.NewHandler(nil, mockSvc, &atomic.Bool{})
 
 			var body *bytes.Buffer
 			var contentType string

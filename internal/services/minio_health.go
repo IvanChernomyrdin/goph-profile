@@ -2,9 +2,11 @@ package services
 
 import (
 	"context"
+	"goph-profile-avatars/internal/resilience"
 	"log/slog"
 
 	"github.com/minio/minio-go/v7"
+	"github.com/sony/gobreaker"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -17,11 +19,13 @@ type MinioClient interface {
 
 type MinIOHealthService struct {
 	client MinioClient
+	check  *gobreaker.CircuitBreaker
 }
 
-func NewMinIOHealthService(client MinioClient) *MinIOHealthService {
+func NewMinIOHealthService(client MinioClient, logger *slog.Logger) *MinIOHealthService {
 	return &MinIOHealthService{
 		client: client,
+		check:  resilience.New("minio-health-check", logger),
 	}
 }
 
@@ -35,7 +39,10 @@ func (s *MinIOHealthService) Check(ctx context.Context) error {
 
 	logger := slog.With("service", "minio-health", "trace_id", span.SpanContext().TraceID())
 
-	_, err := s.client.ListBuckets(ctx)
+	_, err := s.check.Execute(func() (any, error) {
+		return s.client.ListBuckets(ctx)
+	})
+
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "check minio")

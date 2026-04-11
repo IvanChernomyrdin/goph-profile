@@ -1,6 +1,9 @@
 package api
 
-import "context"
+import (
+	"context"
+	"sync/atomic"
+)
 
 type AvatarService interface {
 	UploadAvatar(ctx context.Context, input UploadAvatarInput) (*UploadAvatarResult, error)
@@ -15,14 +18,17 @@ type AvatarService interface {
 type Handler struct {
 	healthService *HealthService
 	avatarService AvatarService
+	isReady       *atomic.Bool
 }
 
 func NewHandler(
 	healthService *HealthService,
 	avatarService AvatarService,
+	isReady *atomic.Bool,
 ) *Handler {
 	return &Handler{
 		healthService: healthService,
 		avatarService: avatarService,
+		isReady:       isReady,
 	}
 }

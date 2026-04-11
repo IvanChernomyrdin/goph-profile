@@ -6,8 +6,10 @@ import (
 	"log/slog"
 
 	"goph-profile-avatars/internal/metrics"
+	"goph-profile-avatars/internal/resilience"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/sony/gobreaker"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -36,14 +38,21 @@ type RabbitPublisher struct {
 	exchange         string
 	updateRoutingKey string
 	deleteRoutingKey string
+	uploadCB         *gobreaker.CircuitBreaker
+	deleteCB         *gobreaker.CircuitBreaker
 }
 
-func NewRabbitPublisher(ch ChannelInterface, exchange, updateRoutingKey, deleteRoutingKey string) *RabbitPublisher {
+func NewRabbitPublisher(ch ChannelInterface,
+	exchange, updateRoutingKey, deleteRoutingKey string,
+	logger *slog.Logger,
+) *RabbitPublisher {
 	return &RabbitPublisher{
 		ch:               ch,
 		exchange:         exchange,
 		updateRoutingKey: updateRoutingKey,
 		deleteRoutingKey: deleteRoutingKey,
+		uploadCB:         resilience.New("rabbitmq-publish-upload", logger),
+		deleteCB:         resilience.New("rabbitmq-publish-delete", logger),
 	}
 }
 
@@ -103,18 +112,20 @@ func (p *RabbitPublisher) PublishUploadEvent(ctx context.Context, event AvatarUp
 	headers := amqp.Table{}
 	otel.GetTextMapPropagator().Inject(ctx, amqpHeaderCarrier(headers))
 
-	err = p.ch.PublishWithContext(
-		ctx,
-		p.exchange,
-		p.updateRoutingKey,
-		false,
-		false,
-		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        body,
-			Headers:     headers,
-		},
-	)
+	_, err = p.uploadCB.Execute(func() (interface{}, error) {
+		return nil, p.ch.PublishWithContext(
+			ctx,
+			p.exchange,
+			p.updateRoutingKey,
+			false,
+			false,
+			amqp.Publishing{
+				ContentType: "application/json",
+				Body:        body,
+				Headers:     headers,
+			},
+		)
+	})
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "publish failed")
@@ -161,18 +172,20 @@ func (p *RabbitPublisher) PublishDeleteEvent(ctx context.Context, event AvatarDe
 	headers := amqp.Table{}
 	otel.GetTextMapPropagator().Inject(ctx, amqpHeaderCarrier(headers))
 
-	err = p.ch.PublishWithContext(
-		ctx,
-		p.exchange,
-		p.deleteRoutingKey,
-		false,
-		false,
-		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        body,
-			Headers:     headers,
-		},
-	)
+	_, err = p.deleteCB.Execute(func() (interface{}, error) {
+		return nil, p.ch.PublishWithContext(
+			ctx,
+			p.exchange,
+			p.deleteRoutingKey,
+			false,
+			false,
+			amqp.Publishing{
+				ContentType: "application/json",
+				Body:        body,
+				Headers:     headers,
+			},
+		)
+	})
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "publish failed")

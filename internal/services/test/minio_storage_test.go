@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/minio/minio-go/v7"
@@ -39,14 +40,14 @@ func (m *mockMinioClient) RemoveObject(ctx context.Context, bucketName, objectNa
 
 func TestNewMinIOStorage(t *testing.T) {
 	mockClient := new(mockMinioClient)
-	storage := services.NewMinIOStorage(mockClient, "test-bucket")
+	storage := services.NewMinIOStorage(mockClient, "test-bucket", &slog.Logger{})
 
 	assert.NotNil(t, storage)
 }
 
 func TestMinIOStorage_Upload_Success(t *testing.T) {
 	mockClient := new(mockMinioClient)
-	storage := services.NewMinIOStorage(mockClient, "test-bucket")
+	storage := services.NewMinIOStorage(mockClient, "test-bucket", &slog.Logger{})
 
 	ctx := context.Background()
 	key := "avatars/user123/avatar.jpg"
@@ -66,7 +67,7 @@ func TestMinIOStorage_Upload_Success(t *testing.T) {
 
 func TestMinIOStorage_Upload_Error(t *testing.T) {
 	mockClient := new(mockMinioClient)
-	storage := services.NewMinIOStorage(mockClient, "test-bucket")
+	storage := services.NewMinIOStorage(mockClient, "test-bucket", &slog.Logger{})
 
 	ctx := context.Background()
 	key := "avatars/user123/avatar.jpg"
@@ -89,7 +90,7 @@ func TestMinIOStorage_Upload_Error(t *testing.T) {
 
 func TestMinIOStorage_Delete_Success(t *testing.T) {
 	mockClient := new(mockMinioClient)
-	storage := services.NewMinIOStorage(mockClient, "test-bucket")
+	storage := services.NewMinIOStorage(mockClient, "test-bucket", &slog.Logger{})
 
 	ctx := context.Background()
 	key := "avatars/user123/avatar.jpg"
@@ -104,7 +105,7 @@ func TestMinIOStorage_Delete_Success(t *testing.T) {
 
 func TestMinIOStorage_Delete_Error(t *testing.T) {
 	mockClient := new(mockMinioClient)
-	storage := services.NewMinIOStorage(mockClient, "test-bucket")
+	storage := services.NewMinIOStorage(mockClient, "test-bucket", &slog.Logger{})
 
 	ctx := context.Background()
 	key := "avatars/user123/avatar.jpg"

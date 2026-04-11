@@ -12,6 +12,7 @@ import (
 
 	constErr "goph-profile-avatars/internal/errors"
 	"goph-profile-avatars/internal/repository"
+	"goph-profile-avatars/internal/resilience"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -121,6 +122,13 @@ func validateFileSize(size int64, w http.ResponseWriter) bool {
 
 // handleServiceError обрабатывает ошибки
 func handleServiceError(err error, w http.ResponseWriter) bool {
+	if resilience.IsOpen(err) {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{
+			Error:   "Dependency unavailable",
+			Details: "External dependency circuit breaker is open",
+		})
+		return true
+	}
 	if errors.Is(err, context.Canceled) {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
 			Error:   "Request cancelled",
@@ -199,7 +207,20 @@ func writeFileResponse(w http.ResponseWriter, result *GetAvatarResult) {
 	}
 }
 
-// UploadAvatar загружает аватар пользователя.
+// UploadAvatar godoc
+// @Summary Загрузить аватар
+// @Description Загружает новый файл аватарки пользователя.
+// @Tags avatars
+// @Accept mpfd
+// @Produce json
+// @Param X-User-ID header string true "ID пользователя"
+// @Param file formData file true "Файл аватарки (jpeg/png/webp, до 10MB)"
+// @Success 201 {object} UploadAvatarResult
+// @Failure 400 {object} ErrorResponse
+// @Failure 408 {object} ErrorResponse
+// @Failure 413 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /avatars [post]
 func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -261,7 +282,18 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, result)
 }
 
-// GetAvatar получение аватарки
+// GetAvatar godoc
+// @Summary Получить аватар по ID
+// @Description Возвращает файл аватарки по avatar_id. Поддерживается параметр size.
+// @Tags avatars
+// @Produce octet-stream
+// @Param avatar_id path string true "UUID аватарки"
+// @Param size query string false "Размер аватарки" Enums(original,100x100,300x300)
+// @Success 200 {file} file
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /avatars/{avatar_id} [get]
 func (h *Handler) GetAvatar(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -294,7 +326,17 @@ func (h *Handler) GetAvatar(w http.ResponseWriter, r *http.Request) {
 	writeFileResponse(w, result)
 }
 
-// GetUserAvatar получение текущей аватарки пользователя
+// GetUserAvatar godoc
+// @Summary Получить текущую аватарку пользователя
+// @Description Возвращает текущую активную аватарку пользователя.
+// @Tags users
+// @Produce octet-stream
+// @Param user_id path string true "ID пользователя"
+// @Success 200 {file} file
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /users/{user_id}/avatar [get]
 func (h *Handler) GetUserAvatar(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -322,7 +364,16 @@ func (h *Handler) GetUserAvatar(w http.ResponseWriter, r *http.Request) {
 	writeFileResponse(w, result)
 }
 
-// GetUserAvatars получение всех аватарок пользователя
+// GetUserAvatars godoc
+// @Summary Получить список аватарок пользователя
+// @Description Возвращает список всех аватарок пользователя.
+// @Tags users
+// @Produce json
+// @Param user_id path string true "ID пользователя"
+// @Success 200 {array} AvatarItem
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /users/{user_id}/avatars [get]
 func (h *Handler) GetUserAvatars(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -346,7 +397,19 @@ func (h *Handler) GetUserAvatars(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-// UpdateCurrentAvatar выставление текущей аватарки пользователя
+// UpdateCurrentAvatar godoc
+// @Summary Сделать аватарку текущей
+// @Description Устанавливает выбранную аватарку как основную для пользователя.
+// @Tags avatars
+// @Accept json
+// @Produce json
+// @Param avatar_id path string true "UUID аватарки"
+// @Param X-User-ID header string true "ID пользователя"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /avatars/{avatar_id}/current [patch]
 func (h *Handler) UpdateCurrentAvatar(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -380,7 +443,20 @@ func (h *Handler) UpdateCurrentAvatar(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// DeleteUserCurrentAvatar удаление аватарки из статуса текущей
+// DeleteUserCurrentAvatar godoc
+// @Summary Убрать статус текущей аватарки
+// @Description Удаляет статус текущей аватарки пользователя без удаления самой записи аватарки.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param user_id path string true "ID пользователя"
+// @Param X-User-ID header string true "ID авторизованного пользователя"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /users/{user_id}/avatar [delete]
 func (h *Handler) DeleteUserCurrentAvatar(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -422,7 +498,21 @@ func (h *Handler) DeleteUserCurrentAvatar(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// DeleteAvatarByID удаление аватарки по ID
+// DeleteAvatarByID godoc
+// @Summary Удалить аватарку по ID
+// @Description Ставит аватарку в очередь на асинхронное удаление.
+// @Tags avatars
+// @Accept json
+// @Produce json
+// @Param avatar_id path string true "UUID аватарки"
+// @Param X-User-ID header string true "ID пользователя"
+// @Success 202 {object} map[string]string
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 410 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /avatars/{avatar_id} [delete]
 func (h *Handler) DeleteAvatarByID(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

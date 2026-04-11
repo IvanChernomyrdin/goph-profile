@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -85,7 +86,7 @@ func TestGetAvatar(t *testing.T) {
 			mockSvc := new(mocks.AvatarService)
 			tt.setupMock(mockSvc)
 
-			handler := api.NewHandler(nil, mockSvc)
+			handler := api.NewHandler(nil, mockSvc, &atomic.Bool{})
 
 			req := httptest.NewRequest(http.MethodGet, "/api/avatar/"+tt.avatarID, nil)
 			if tt.size != "" {
@@ -159,7 +160,7 @@ func TestGetUserAvatar(t *testing.T) {
 			mockSvc := new(mocks.AvatarService)
 			tt.setupMock(mockSvc)
 
-			handler := api.NewHandler(nil, mockSvc)
+			handler := api.NewHandler(nil, mockSvc, &atomic.Bool{})
 
 			req := httptest.NewRequest(http.MethodGet, "/api/user/"+tt.userID+"/avatar", nil)
 
@@ -212,7 +213,7 @@ func TestGetUserAvatars(t *testing.T) {
 			mockSvc := new(mocks.AvatarService)
 			tt.setupMock(mockSvc)
 
-			handler := api.NewHandler(nil, mockSvc)
+			handler := api.NewHandler(nil, mockSvc, &atomic.Bool{})
 
 			req := httptest.NewRequest(http.MethodGet, "/api/user/"+tt.userID+"/avatars", nil)
 

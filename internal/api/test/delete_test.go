@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -74,7 +75,7 @@ func TestDeleteAvatarByID(t *testing.T) {
 			mockSvc := new(mocks.AvatarService)
 			tt.setupMock(mockSvc)
 
-			handler := api.NewHandler(nil, mockSvc)
+			handler := api.NewHandler(nil, mockSvc, &atomic.Bool{})
 
 			req := httptest.NewRequest(http.MethodDelete, "/api/avatar/"+tt.avatarID, nil)
 			if tt.userID != "" {

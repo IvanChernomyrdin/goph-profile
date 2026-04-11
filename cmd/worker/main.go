@@ -28,7 +28,7 @@ func main() {
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		fmt.Errorf("failed to load config: %w, config_path: %w", err, configPath)
+		fmt.Printf("failed to load config: %v, config_path: %s\n", err, configPath)
 		return
 	}
 
@@ -63,7 +63,7 @@ func main() {
 	}()
 
 	avatarRepo := repository.NewAvatarRepository(config.GetDB())
-	storage := services.NewMinIOStorage(config.GetMinIOClient(), cfg.S3.Bucket)
+	storage := services.NewMinIOStorage(config.GetMinIOClient(), cfg.S3.Bucket, logger)
 
 	avatarWorkerService := worker.NewAvatarWorkerService(
 		avatarRepo,

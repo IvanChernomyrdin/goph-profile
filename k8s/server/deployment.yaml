@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gophprofile-server
+  namespace: gophprofile
+  labels:
+    app: gophprofile-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gophprofile-server
+  template:
+    metadata:
+      labels:
+        app: gophprofile-server
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: server
+          image: gophprofile-server:latest
+          imagePullPolicy: Never
+          command: ["/app/gophprofile-server"]
+          env:
+            - name: CONFIG_PATH
+              value: /app/configs/server.yaml
+            - name: USER
+              value: "app"
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: server-config
+              mountPath: /app/configs/server.yaml
+              subPath: server.yaml
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: server-config
+          secret:
+            secretName: gophprofile-server-secret

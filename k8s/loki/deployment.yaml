@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+  namespace: gophprofile
+  labels:
+    app: loki
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      containers:
+        - name: loki
+          image: grafana/loki:3.5.5
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/bin/loki
+            - -config.file=/etc/loki/config.yml
+          ports:
+            - name: http
+              containerPort: 3100
+          volumeMounts:
+            - name: loki-config
+              mountPath: /etc/loki/config.yml
+              subPath: config.yml
+              readOnly: true
+            - name: loki-data
+              mountPath: /loki
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      volumes:
+        - name: loki-config
+          configMap:
+            name: loki-config
+        - name: loki-data
+          persistentVolumeClaim:
+            claimName: loki-pvc
