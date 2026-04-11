@@ -39,7 +39,40 @@ func NewHealthService(postgres PostgresChecker, minio MinIOChecker, rabbitmq Rab
 	}
 }
 
-func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
+// Liveness godoc
+// @Summary Liveness probe
+// @Description Проверка, что HTTP-сервис запущен.
+// @Tags health
+// @Produce plain
+// @Success 200 {string} string "ok"
+// @Router /health/live [get]
+func (h *Handler) Liveness(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
+}
+
+// Readiness godoc
+// @Summary Readiness probe
+// @Description Проверка готовности сервиса к обработке трафика и доступности зависимостей.
+// @Tags health
+// @Produce json
+// @Success 200 {object} HealthResponse
+// @Failure 503 {object} HealthResponse
+// @Router /health/ready [get]
+func (h *Handler) Readiness(w http.ResponseWriter, r *http.Request) {
+	if h.isReady != nil && !h.isReady.Load() {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(HealthResponse{
+			Status: "shutting_down",
+			Services: map[string]string{
+				"server": "not_ready",
+			},
+			Timestamp: time.Now().Format(time.RFC3339),
+		})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
@@ -64,7 +97,6 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.healthService.rabbitmq.Check(ctx); err != nil {
-		resp.Status = "degraded"
 		resp.Services["rabbitmq"] = "error"
 	}
 

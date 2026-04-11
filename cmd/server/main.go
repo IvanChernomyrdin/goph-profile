@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -17,8 +18,21 @@ import (
 	"goph-profile-avatars/internal/services"
 )
 
+// @title GophProfile Avatar Service API
+// @version 1.0
+// @description API микросервиса управления аватарками пользователей.
+// @description
+// @description Возможности сервиса:
+// @description - загрузка аватарки
+// @description - получение текущей аватарки пользователя
+// @description - получение списка аватарок пользователя
+// @description - получение аватарки по ID
+// @description - установка аватарки как основной
+// @description - удаление аватарки
+// @description - health checks и metrics
+// @schemes http
 func main() {
-	ctx := context.Background()
+	appCtx := context.Background()
 
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
@@ -27,12 +41,12 @@ func main() {
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		fmt.Errorf("failed to load config: %w, config_path: %w", err, configPath)
+		fmt.Printf("failed to load config: %v, config_path: %s\n", err, configPath)
 		return
 	}
 
 	logger, shutdownObservability := logging.InitObservability(
-		ctx,
+		appCtx,
 		"gophprofile-server",
 		"1.0.0",
 		fmt.Sprintf("%s:%d", cfg.Jaeger.Name, cfg.Jaeger.Port),
@@ -61,6 +75,9 @@ func main() {
 		}
 	}()
 
+	var isReady atomic.Bool
+	isReady.Store(true)
+
 	healthService := apis.NewHealthService(
 		config.GetDB(),
 		services.NewMinIOHealthService(config.GetMinIOClient()),
@@ -85,6 +102,7 @@ func main() {
 	handler := apis.NewHandler(
 		healthService,
 		avatarService,
+		&isReady,
 	)
 
 	router := routerhttp.NewRouter(handler, cfg.RateLimit.RequestPerMinute)
@@ -104,17 +122,30 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
+	serverErr := make(chan error, 1)
+
 	go func() {
 		logger.Info("server started", "addr", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("listen error", "error", err)
+			serverErr <- err
 		}
 	}()
 
-	<-stop
-	logger.Info("shutting down server")
+	select {
+	case sig := <-stop:
+		logger.Info("received shutdown signal", "signal", sig.String())
+	case err := <-serverErr:
+		logger.Error("server failed", "error", err)
+		return
+	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	logger.Info("marking server as not ready")
+	isReady.Store(false)
+
+	time.Sleep(5 * time.Second)
+
+	logger.Info("shutting down server")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {

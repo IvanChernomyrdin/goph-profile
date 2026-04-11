@@ -5,6 +5,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,7 +18,7 @@ import (
 
 func TestNewRouter(t *testing.T) {
 	mockService := new(mocks.AvatarService)
-	handler := api.NewHandler(nil, mockService)
+	handler := api.NewHandler(nil, mockService, &atomic.Bool{})
 
 	router := myHttp.NewRouter(handler, 100)
 	assert.NotNil(t, router)
@@ -25,7 +26,7 @@ func TestNewRouter(t *testing.T) {
 
 func TestRouter_APIRoutes(t *testing.T) {
 	mockService := new(mocks.AvatarService)
-	handler := api.NewHandler(nil, mockService)
+	handler := api.NewHandler(nil, mockService, &atomic.Bool{})
 	router := myHttp.NewRouter(handler, 100)
 
 	validUserID := "123"
@@ -163,7 +164,7 @@ func TestRouter_APIRoutes(t *testing.T) {
 
 func TestRouter_NotFound(t *testing.T) {
 	mockService := new(mocks.AvatarService)
-	handler := api.NewHandler(nil, mockService)
+	handler := api.NewHandler(nil, mockService, &atomic.Bool{})
 	router := myHttp.NewRouter(handler, 100)
 
 	req := httptest.NewRequest(http.MethodGet, "/non-existent-path", nil)
@@ -175,7 +176,7 @@ func TestRouter_NotFound(t *testing.T) {
 
 func TestRouter_MethodNotAllowed(t *testing.T) {
 	mockService := new(mocks.AvatarService)
-	handler := api.NewHandler(nil, mockService)
+	handler := api.NewHandler(nil, mockService, &atomic.Bool{})
 	router := myHttp.NewRouter(handler, 100)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/avatars/invalid-id", nil)
