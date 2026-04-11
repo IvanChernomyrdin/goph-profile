@@ -80,17 +80,18 @@ func main() {
 
 	healthService := apis.NewHealthService(
 		config.GetDB(),
-		services.NewMinIOHealthService(config.GetMinIOClient()),
-		services.NewRabbitMQHealthService(config.GetRabbitConn()),
+		services.NewMinIOHealthService(config.GetMinIOClient(), logger),
+		services.NewRabbitMQHealthService(config.GetRabbitConn(), logger),
 	)
 
 	avatarRepo := repository.NewAvatarRepository(config.GetDB())
-	storage := services.NewMinIOStorage(config.GetMinIOClient(), cfg.S3.Bucket)
+	storage := services.NewMinIOStorage(config.GetMinIOClient(), cfg.S3.Bucket, logger)
 	publisher := services.NewRabbitPublisher(
 		config.GetRabbitChannel(),
 		cfg.RabbitMQ.Exchange,
 		cfg.RabbitMQ.UploadRoutingKey,
 		cfg.RabbitMQ.DeleteRoutingKey,
+		logger,
 	)
 
 	avatarService := services.NewAvatarService(

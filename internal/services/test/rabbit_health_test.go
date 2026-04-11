@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -37,13 +38,13 @@ func (m *mockConnection) Close() error {
 
 func TestNewRabbitMQHealthService(t *testing.T) {
 	mockConn := new(mockConnection)
-	service := services.NewRabbitMQHealthService(mockConn)
+	service := services.NewRabbitMQHealthService(mockConn, &slog.Logger{})
 
 	assert.NotNil(t, service)
 }
 
 func TestRabbitMQHealthService_Check_NilConnection(t *testing.T) {
-	service := services.NewRabbitMQHealthService(nil)
+	service := services.NewRabbitMQHealthService(nil, &slog.Logger{})
 
 	err := service.Check(context.Background())
 
@@ -53,7 +54,7 @@ func TestRabbitMQHealthService_Check_NilConnection(t *testing.T) {
 
 func TestRabbitMQHealthService_Check_ClosedConnection(t *testing.T) {
 	mockConn := new(mockConnection)
-	service := services.NewRabbitMQHealthService(mockConn)
+	service := services.NewRabbitMQHealthService(mockConn, &slog.Logger{})
 
 	mockConn.On("IsClosed").Return(true)
 
@@ -66,7 +67,7 @@ func TestRabbitMQHealthService_Check_ClosedConnection(t *testing.T) {
 
 func TestRabbitMQHealthService_Check_ChannelCreationError(t *testing.T) {
 	mockConn := new(mockConnection)
-	service := services.NewRabbitMQHealthService(mockConn)
+	service := services.NewRabbitMQHealthService(mockConn, &slog.Logger{})
 
 	mockConn.On("IsClosed").Return(false)
 	mockConn.On("Channel").Return(nil, errors.New("channel creation failed"))

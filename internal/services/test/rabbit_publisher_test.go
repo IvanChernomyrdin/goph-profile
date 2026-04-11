@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"testing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -18,7 +19,11 @@ type mockChannel struct {
 	mock.Mock
 }
 
-func (m *mockChannel) PublishWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error {
+func (m *mockChannel) PublishWithContext(ctx context.Context,
+	exchange, key string,
+	mandatory, immediate bool,
+	msg amqp.Publishing,
+) error {
 	args := m.Called(ctx, exchange, key, mandatory, immediate, msg)
 	return args.Error(0)
 }
@@ -30,14 +35,14 @@ func (m *mockChannel) Close() error {
 
 func TestNewRabbitPublisher(t *testing.T) {
 	mockCh := new(mockChannel)
-	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key")
+	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key", &slog.Logger{})
 
 	assert.NotNil(t, publisher)
 }
 
 func TestRabbitPublisher_PublishUploadEvent_Success(t *testing.T) {
 	mockCh := new(mockChannel)
-	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key")
+	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key", &slog.Logger{})
 
 	ctx := context.Background()
 	event := services.AvatarUploadEvent{
@@ -67,7 +72,7 @@ func TestRabbitPublisher_PublishUploadEvent_Success(t *testing.T) {
 
 func TestRabbitPublisher_PublishUploadEvent_PublishError(t *testing.T) {
 	mockCh := new(mockChannel)
-	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key")
+	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key", &slog.Logger{})
 
 	ctx := context.Background()
 	event := services.AvatarUploadEvent{
@@ -103,7 +108,7 @@ func TestRabbitPublisher_PublishUploadEvent_PublishError(t *testing.T) {
 
 func TestRabbitPublisher_PublishDeleteEvent_Success(t *testing.T) {
 	mockCh := new(mockChannel)
-	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key")
+	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key", &slog.Logger{})
 
 	ctx := context.Background()
 	event := services.AvatarDeleteEvent{
@@ -136,7 +141,7 @@ func TestRabbitPublisher_PublishDeleteEvent_Success(t *testing.T) {
 
 func TestRabbitPublisher_PublishDeleteEvent_PublishError(t *testing.T) {
 	mockCh := new(mockChannel)
-	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key")
+	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key", &slog.Logger{})
 
 	ctx := context.Background()
 	event := services.AvatarDeleteEvent{
@@ -172,7 +177,7 @@ func TestRabbitPublisher_PublishDeleteEvent_PublishError(t *testing.T) {
 
 func TestRabbitPublisher_PublishUploadEvent_WithCanceledContext(t *testing.T) {
 	mockCh := new(mockChannel)
-	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key")
+	publisher := services.NewRabbitPublisher(mockCh, "test-exchange", "upload.key", "delete.key", &slog.Logger{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

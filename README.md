@@ -87,7 +87,7 @@
 - `kubectl apply -f .\k8s\jaeger\`
 
 **OpenTelemetry Collector**
-- `kubectl apply -f .\k8s\otel-collector\`
+- `kubectl apply -f .\k8s\otel\`
 
 **Prometheus**
 - `kubectl apply -f .\k8s\prometheus\`
@@ -100,13 +100,21 @@
 
 ##### Развёртывание основных компонентов приложения
 
-- После развёртывания инфраструктурных компонентов запускаются основные сервисы приложения.
+- Основные манифесты `server` применяются отдельно, без `servicemonitor.yaml`, так как namespace `monitoring` на этом этапе ещё не создан.
 
 **server**
-- `kubectl apply -f .\k8s\server\`
+- `kubectl apply -f .\k8s\server\secret.yaml`
+- `kubectl apply -f .\k8s\server\service.yaml`
+- `kubectl apply -f .\k8s\server\deployment.yaml`
+- `kubectl apply -f .\k8s\server\hpa.yaml`
+- `kubectl apply -f .\k8s\server\ingress.yaml`
+- `kubectl apply -f .\k8s\server\networkpolicy.yaml`
 
 **worker**
-- `kubectl apply -f .\k8s\worker\`
+- `kubectl apply -f .\k8s\worker\service.yaml`
+- `kubectl apply -f .\k8s\worker\deployment.yaml`
+- `kubectl apply -f .\k8s\worker\hpa.yaml`
+- `kubectl apply -f .\k8s\worker\networkpolicy.yaml`
 
 #### Установка Promtail
 
@@ -140,9 +148,9 @@
 
 ##### Применение ServiceMonitor
 
-- Затем применяются `ServiceMonitor` для `server` и `worker`:
-  - `kubectl apply -f .\k8s\monitoring\server-servicemonitor.yaml`
-  - `kubectl apply -f .\k8s\monitoring\worker-servicemonitor.yaml`
+- После создания namespace `monitoring` и установки `kube-prometheus-stack` применяются `ServiceMonitor` для `server` и `worker`:
+  - `kubectl apply -f .\k8s\server\servicemonitor.yaml`
+  - `kubectl apply -f .\k8s\worker\servicemonitor.yaml`
 
 #### Проверка состояния кластера
 
@@ -320,6 +328,21 @@
 - выявлять проблемы во взаимодействии с RabbitMQ
 - контролировать эффективность фоновой обработки в `worker`
 - быстро обнаруживать деградацию сервиса и локализовать источник проблемы
+
+#### Алерты
+
+На текущем стенде основное внимание уделено сбору и визуализации метрик, логов и трассировок в Kubernetes-окружении.  
+В качестве основных сценариев для алертинга рассматриваются следующие события:
+
+- недоступность `gophprofile-server` или `gophprofile-worker`
+- рост количества HTTP-ответов с кодами `5xx`
+- увеличение времени ответа HTTP API
+- ошибки публикации сообщений в RabbitMQ
+- рост количества `nack` и ошибок подтверждения сообщений
+- рост числа ошибок обработки задач worker
+- недоступность PostgreSQL, MinIO или RabbitMQ по readiness check
+- отсутствие scrape-метрик с `server` и `worker` в Prometheus
+
 
 ### Результат
 

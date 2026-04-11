@@ -12,6 +12,7 @@ import (
 
 	constErr "goph-profile-avatars/internal/errors"
 	"goph-profile-avatars/internal/repository"
+	"goph-profile-avatars/internal/resilience"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -121,6 +122,13 @@ func validateFileSize(size int64, w http.ResponseWriter) bool {
 
 // handleServiceError обрабатывает ошибки
 func handleServiceError(err error, w http.ResponseWriter) bool {
+	if resilience.IsOpen(err) {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{
+			Error:   "Dependency unavailable",
+			Details: "External dependency circuit breaker is open",
+		})
+		return true
+	}
 	if errors.Is(err, context.Canceled) {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
 			Error:   "Request cancelled",

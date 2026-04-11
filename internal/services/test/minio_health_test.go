@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"goph-profile-avatars/internal/services"
+	"log/slog"
 	"testing"
 
 	"github.com/minio/minio-go/v7"
@@ -21,7 +22,7 @@ func (m *mockMinioClient) ListBuckets(ctx context.Context) ([]minio.BucketInfo, 
 
 func TestMinIOHealthService_Check_Success(t *testing.T) {
 	mockClient := new(mockMinioClient)
-	service := services.NewMinIOHealthService(mockClient)
+	service := services.NewMinIOHealthService(mockClient, &slog.Logger{})
 
 	mockClient.On("ListBuckets", mock.Anything).Return([]minio.BucketInfo{}, nil)
 
@@ -33,7 +34,7 @@ func TestMinIOHealthService_Check_Success(t *testing.T) {
 
 func TestMinIOHealthService_Check_Failure(t *testing.T) {
 	mockClient := new(mockMinioClient)
-	service := services.NewMinIOHealthService(mockClient)
+	service := services.NewMinIOHealthService(mockClient, &slog.Logger{})
 
 	expectedErr := errors.New("connection failed")
 	mockClient.On("ListBuckets", mock.Anything).Return(nil, expectedErr)
@@ -47,7 +48,7 @@ func TestMinIOHealthService_Check_Failure(t *testing.T) {
 
 func TestMinIOHealthService_Check_EmptyBuckets(t *testing.T) {
 	mockClient := new(mockMinioClient)
-	service := services.NewMinIOHealthService(mockClient)
+	service := services.NewMinIOHealthService(mockClient, &slog.Logger{})
 
 	mockClient.On("ListBuckets", mock.Anything).Return([]minio.BucketInfo{}, nil)
 
@@ -59,7 +60,7 @@ func TestMinIOHealthService_Check_EmptyBuckets(t *testing.T) {
 
 func TestMinIOHealthService_Check_WithContextCancel(t *testing.T) {
 	mockClient := new(mockMinioClient)
-	service := services.NewMinIOHealthService(mockClient)
+	service := services.NewMinIOHealthService(mockClient, &slog.Logger{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
